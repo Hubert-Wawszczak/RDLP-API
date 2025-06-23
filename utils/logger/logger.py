@@ -37,7 +37,7 @@ class AsyncLogger:
     Provides logging capabilities with support for asynchronous operations.
     """
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str = "G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml"):
         """
         Initialize the AsyncLogger instance.
 
@@ -49,7 +49,7 @@ class AsyncLogger:
         self.__executor = ThreadPoolExecutor(max_workers=2)
         self.__initialize_logger(config_path)
 
-    def __initialize_logger(self, config_path: Optional[str] = None) -> None:
+    def __initialize_logger(self, config_path: str = "G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml") -> None:
         """
         Initialize the logger with either a provided configuration file or default settings.
 
@@ -58,7 +58,7 @@ class AsyncLogger:
         """
         try:
             # Create logs directory if it doesn't exist
-            logs_dir = Path('logs')
+            logs_dir = Path('G:\\PilarzOPS\\RDLP-API\\logs')
             logs_dir.mkdir(exist_ok=True)
 
             # Generate unique log filename with timestamp
@@ -72,7 +72,11 @@ class AsyncLogger:
                 self.__configure_defaults(log_filepath)
 
             self.__logger = logging.getLogger('async_logger')
-            self.__loop = asyncio.get_event_loop() if asyncio.get_event_loop_policy().get_event_loop().is_running() else None
+            try:
+                self.__loop = asyncio.get_event_loop()
+            except RuntimeError:
+                self.__loop = None
+                #asyncio.set_event_loop(self.__loop)
 
         except FileNotFoundError:
             raise RuntimeError(f"Configuration file not found: {config_path}")
@@ -85,6 +89,8 @@ class AsyncLogger:
             )
             self.__logger = logging.getLogger('async_logger_fallback')
             self.__logger.error(f"Failed to initialize logger: {str(e)}")
+
+
 
     def __configure_from_yaml(self, config_path: str, log_filepath: Path) -> None:
         """
@@ -165,12 +171,11 @@ class AsyncLogger:
         if self.__loop and self.__loop.is_running():
             await asyncio.get_event_loop().run_in_executor(
                 self.__executor,
-                log_func,
-                message
+                lambda: log_func(message, stacklevel=9)
             )
         else:
             # Fallback to synchronous logging if no event loop is running
-            log_func(message)
+            log_func(message, stacklevel=9)
 
     def log(self, level: str, message: str) -> None:
         """
@@ -192,11 +197,11 @@ class AsyncLogger:
             else:
                 # Synchronously log if not in async context
                 log_func = getattr(self.__logger, level.lower(), self.__logger.info)
-                log_func(message)
+                log_func(message, stacklevel=2)
         except RuntimeError:
             # If we can't get an event loop, log synchronously
             log_func = getattr(self.__logger, level.lower(), self.__logger.info)
-            log_func(message)
+            log_func(message, stacklevel=2)
 
     def log_time_exec(self, func: F) -> F:
         """
@@ -240,19 +245,20 @@ if __name__ == "__main__":
     new_logger.log("ERROR", "asdfxd")
     @new_logger.log_time_exec
     def asdf():
-        time.sleep(3)
+        time.sleep(1)
 
     asdf()
 
     async def task_sleep_5():
         new_logger.log("INFO","Task 5s start")
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
         new_logger.log("INFO","Task 5s end")
 
     async def task_sleep_10():
         new_logger.log("INFO","Task 10s start")
-        await asyncio.sleep(10)
+        await asyncio.sleep(3)
         new_logger.log("INFO","Task 10s end")
+        
     async def main():
         new_logger.log("INFO", "start")
         await asyncio.gather(

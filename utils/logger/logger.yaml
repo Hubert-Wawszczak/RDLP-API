@@ -3,7 +3,7 @@ disable_existing_loggers: false
 
 formatters:
   standard:
-    format: '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    format: '%(asctime)s - %(name)s - [%(levelname)s] - [%(filename)s:%(lineno)d] - %(message)s'
     datefmt: '%Y-%m-%d %H:%M:%S'
   simple:
     format: '%(levelname)s - %(message)s'
@@ -11,8 +11,8 @@ formatters:
 handlers:
   console:
     class: logging.StreamHandler
-    level: INFO
-    formatter: simple
+    level: DEBUG
+    formatter: standard
     stream: ext://sys.stdout
 
   file:
@@ -35,7 +35,7 @@ loggers:
   async_logger:
     level: DEBUG
     handlers: [console, rotating_file]
-    propagate: true
+    propagate: false
 
 root:
   level: INFO
