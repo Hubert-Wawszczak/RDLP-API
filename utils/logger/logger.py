@@ -7,8 +7,6 @@
 # opracować w klase, dostęp do loggera przez metodę(poziom, wiadomość)
 # __  <-atrybut prywatny na obiekt loggera
 
-# TODO: dodatkowe wyjątki
-
 
 import time
 import yaml
@@ -48,6 +46,7 @@ class AsyncLogger:
         self.__loop = None
         self.__executor = ThreadPoolExecutor(max_workers=2)
         self.__initialize_logger(config_path)
+        self.valid_levels = {'debug', 'info', 'warning', 'error', 'critical'}
 
     def __initialize_logger(self, config_path: str = "G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml") -> None:
         """
@@ -188,7 +187,7 @@ class AsyncLogger:
         """
         if not self.__logger:
             return
-
+        normalized_level = level.lower() if level.lower() in self.valid_levels else 'info'
         try:
             # Check if we're in an async context
             if asyncio.get_event_loop_policy().get_event_loop().is_running():
@@ -196,7 +195,7 @@ class AsyncLogger:
                 asyncio.create_task(self.__async_log(level, message))
             else:
                 # Synchronously log if not in async context
-                log_func = getattr(self.__logger, level.lower(), self.__logger.info)
+                log_func = getattr(self.__logger, normalized_level, self.__logger.info)
                 log_func(message, stacklevel=2)
         except RuntimeError:
             # If we can't get an event loop, log synchronously
