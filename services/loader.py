@@ -5,7 +5,10 @@ import aiofiles
 import json
 import re
 import io
+import csv
 import unicodedata
+import shapely.geometry, shapely.wkt
+import unittest
 
 from pathlib import Path
 from datetime import datetime
@@ -17,7 +20,12 @@ from db.connection import DBConnection
 
 logger = AsyncLogger()
 
+
 class DataLoader:
+    """
+    Loads, validates, and inserts RDLP data from JSON files into the database.
+    """
+
     __ENDPOINTS_DICT = {
         'RDLP_Bialystok_wydzielenia': 'bialystok',
         'RDLP_Katowice_wydzielenia': 'katowice',
@@ -47,6 +55,17 @@ class DataLoader:
         self.pool = None
 
     def __validate_data(self, data, file: Path):
+        """
+        Validates a single data item using the RDLPData model.
+
+        Args:
+            data (dict): The data item to validate.
+            file (Path): The file from which the data was loaded.
+
+        Returns:
+            RDLPData or list: Validated data item or an empty list if validation fails.
+        """
+
         try:
             item = {
                 "id": data.get("id", {}),
@@ -80,10 +99,30 @@ class DataLoader:
             return []
 
     async def __get_single_item(self, data):
+        """
+        Asynchronously yields each feature item from the data.
+
+        Args:
+            data (dict): The JSON data containing features.
+
+        Yields:
+            dict: A single feature item.
+        """
+
         for item in data.get("features", []):
             yield item
 
     async def __process_file(self, file_path: Path):
+        """
+        Processes a single JSON file: reads, parses, and validates its data.
+
+        Args:
+            file_path (Path): Path to the JSON file.
+
+        Returns:
+            list: List of validated data items.
+        """
+
         try:
             async with aiofiles.open(file_path) as file:
                 file_content = await file.read()
@@ -102,6 +141,16 @@ class DataLoader:
             return []
 
     async def __process_single_batch(self, batch):
+        """
+        Processes a batch of files concurrently.
+
+        Args:
+            batch (list[Path]): List of file paths in the batch.
+
+        Returns:
+            list: List of results from processing each file.
+        """
+
         if batch is not None:
             tasks = [ self.__process_file(f) for f in batch if f.is_file() ]
             return await asyncio.gather(*tasks)
@@ -109,6 +158,13 @@ class DataLoader:
             raise FileNotFoundError
 
     async def __batch_process_files(self):
+        """
+        Asynchronously yields batches of files to be processed.
+
+        Yields:
+            coroutine: Coroutine for processing a batch of files.
+        """
+
         files = list(self.data_dir.glob("*.json"))
         total_files = len(files)
 
@@ -117,59 +173,46 @@ class DataLoader:
             yield batch
 
     async def insert_data(self):
-        try:
-            async with await self.connection.create_pool(self.pool_size // 2, self.pool_size) as pool:
-                async for batch in self.__batch_process_files():
-                    try:
-                        logger.log("INFO", "Inserting items")
-                        # flatten the list of lists and filter out None values
-                        records = [item for sublist in await batch for item in sublist if item]
-                        if not records:
-                            logger.log("INFO","No valid records found in this batch.")
-                            continue
+        """
+        Processes all data files and inserts validated records into the database.
 
-                        grouped = defaultdict(list)
-                        for record in records:
-                            table_name = f"{record.rdlp_name}_wydzielenia"
-                            grouped[table_name].append(record)
+        Returns:
+            None
+        """
 
-                        for table_name, group_records in grouped.items():
-                            try:
-                                logger.log("INFO", f"Inserting {len(group_records)} records into table {table_name}")
-                                columns = list(group_records[0].model_dump().keys())
-                                output = io.BytesIO()
-                                file = open("test.asdf", "a")
-                                for record in group_records:
-                                    row = [
-                                        unicodedata.normalize('NFC', str(record.model_dump().get(col, "")))
-                                        for col in columns
-                                    ]
+        if self.pool is None:
+            self.pool = await self.connection.create_pool(self.pool_size // 2, self.pool_size)
 
-                                    output.write(('\t'.join(row) + '\n').encode('utf-8'))
-                                output.seek(0)
-                                lines = output.getvalue().decode('utf-8').splitlines()
+        async for batch_future in self.__batch_process_files():
+            batch_results = await batch_future
+            # Flatten and filter out invalid items
+            validated_items = [
+                item.model_dump() for sublist in batch_results for item in sublist if item
+            ]
+            if not validated_items:
+                continue
 
-                                for idx, line in enumerate(lines):
-                                    if 40 < len(line) < 50 or idx < 5:
-                                        print(f"Line {idx}: {line}")
-                                async with pool.acquire() as conn:
-                                    print(await conn.fetchval("show CLIENT_ENCODING;"))
-                                    await conn.copy_to_table(
-                                        table_name=table_name,
-                                        schema_name="rdlp",
-                                        source=output,
-                                        columns=columns,
-                                        format='text',
-                                        delimiter='\t',
-                                        encoding='utf-8'
-                                    )
-                            except Exception as e:
-                                file.writelines("\n\n".join(row))
-                                logger.log("ERROR", f"Failed to insert records into {table_name}: {e}")
-                    except Exception as e:
-                        logger.log("ERROR", f"Failed to process batch: {e}")
-        except Exception as e:
-            logger.log("ERROR", f"error in insert data: {e}")
+            # Group records by table name
+            table_groups = {}
+            for item in validated_items:
+                table_name = f"{item['rdlp_name']}_wydzielenia"
+                if isinstance(item['geometry'], dict):
+                    geom = shapely.geometry.shape(item['geometry'])
+                    item['geometry'] = shapely.wkt.dumps(geom)
+                table_groups.setdefault(table_name, []).append(item)
+
+            # Insert each group into its table
+            async with self.pool.acquire() as conn:
+               for table_name, items in table_groups.items():
+                   columns = list(items[0].keys())
+                   col_names = ', '.join([f'"{col}"' if col != 'geometry' else '"geometry"' for col in columns])
+                   placeholders = ', '.join([f'${i+1}' if col != 'geometry' else f'ST_GeomFromText(${i+1}, 4326)' for i, col in enumerate(columns)])
+                   sql = (f'INSERT INTO rdlp.{table_name} ({col_names}) VALUES ({placeholders})'
+                          f'ON CONFLICT ("adr_for", "rdlp_name") DO NOTHING'
+                          )
+                   rows = [tuple(item[col] for col in columns) for item in items]
+                   await conn.executemany(sql, rows)
+
 
 
 if __name__ == "__main__":
