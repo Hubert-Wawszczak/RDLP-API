@@ -217,7 +217,7 @@ class DataLoader:
 
 if __name__ == "__main__":
     async def main():
-        data_dir = Path("G:\\PilarzOPS\\RDLP-API\\temp_data")
+        data_dir = Path(__file__).parent / 'api_data'
         loader = DataLoader(data_dir)
 
         await loader.insert_data()
