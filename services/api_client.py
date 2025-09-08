@@ -53,6 +53,11 @@ class APIClient:
         'RDLP_Warszawa_wydzielenia'
     ]
 
+
+    def __init__(self, save_dir: Path = Path(__file__).parent / 'api_data'):
+        self.save_dir = save_dir
+        self.save_dir.mkdir(exist_ok=True)
+
     @staticmethod
     async def __get_item_total(session: aiohttp.ClientSession, url: str):
         """
@@ -75,7 +80,7 @@ class APIClient:
                 return 0
 
     @staticmethod
-    async def __fetch_data_page(session: aiohttp.ClientSession, url: str, offset: int = 0, save_dir: Path = Path('G:\\PilarzOPS\\RDLP-API\\temp_data')):
+    async def __fetch_data_page(session: aiohttp.ClientSession, url: str, save_dir: Path = Path(__file__).parent / 'api_data', offset: int = 0):
         """
         Fetches a single page of data from the API and saves it to a file.
 
@@ -119,7 +124,7 @@ class APIClient:
 
         # fetch first page of data
         request_url = f"{self.__API}{endpoint}/items"
-        await self.__fetch_data_page(session, request_url + f"?f=json&limit={limit}&offset=0")
+        await self.__fetch_data_page(session, request_url + f"?f=json&limit={limit}&offset=0", self.save_dir)
 
         # get total number of items for given endpoint
         total = await self.__get_item_total(session, request_url + '?f=json&limit=1&skipGeometry=true')
@@ -128,7 +133,7 @@ class APIClient:
         if total > limit:
             logger.log("INFO", f"Fetching data in batches of {limit} for {endpoint}. Total items: {total}")
             tasks = [
-                self.__fetch_data_page(session, request_url + f"?f=json&limit={limit}&offset={offset}", offset)
+                self.__fetch_data_page(session, request_url + f"?f=json&limit={limit}&offset={offset}", self.save_dir, offset)
                 for offset in range(limit, total + limit, limit)
             ]
             await asyncio.gather(*tasks)
