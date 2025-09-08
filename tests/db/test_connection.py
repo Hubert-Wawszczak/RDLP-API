@@ -11,12 +11,13 @@ class TestDBConnection(unittest.IsolatedAsyncioTestCase):
     async def test_connect_success(self, mock_settings, mock_connect):
         mock_conn = AsyncMock()
         mock_conn.fetchval.return_value = True
+        mock_conn.is_closed.return_value = False
         mock_connect.return_value = mock_conn
         self.db._DBConnection__connection = None
 
         result = await self.db.connect()
         self.assertTrue(result)
-        self.assertTrue(self.db.is_connected())
+        self.assertTrue(await self.db.is_connected())
 
     @patch("db.connection.asyncpg.connect", new_callable=AsyncMock)
     @patch("db.connection.Settings")
