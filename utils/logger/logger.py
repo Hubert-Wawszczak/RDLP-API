@@ -35,7 +35,7 @@ class AsyncLogger:
     Provides logging capabilities with support for asynchronous operations.
     """
 
-    def __init__(self, config_path: str = "G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml"):
+    def __init__(self, config_path: str = Path(__file__).parent / 'logger.yaml'):
         """
         Initialize the AsyncLogger instance.
 
@@ -48,7 +48,7 @@ class AsyncLogger:
         self.__initialize_logger(config_path)
         self.valid_levels = {'debug', 'info', 'warning', 'error', 'critical'}
 
-    def __initialize_logger(self, config_path: str = "G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml") -> None:
+    def __initialize_logger(self, config_path: str = Path(__file__).parent / 'logger.yaml') -> None:
         """
         Initialize the logger with either a provided configuration file or default settings.
 
@@ -57,7 +57,7 @@ class AsyncLogger:
         """
         try:
             # Create logs directory if it doesn't exist
-            logs_dir = Path('G:\\PilarzOPS\\RDLP-API\\logs')
+            logs_dir = Path(Path(__file__).parent / 'logs')
             logs_dir.mkdir(exist_ok=True)
 
             # Generate unique log filename with timestamp
