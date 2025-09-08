@@ -34,7 +34,7 @@ class DBConnection:
     )
     async def connect(self) -> bool:
         try:
-            if self.is_connected():
+            if await self.is_connected():
                 logger.log("INFO", "Already connected to the database.")
                 return True
 
