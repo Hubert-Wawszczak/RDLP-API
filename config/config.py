@@ -5,7 +5,7 @@ from path import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from utils.logger.logger import AsyncLogger
-
+from typing import ClassVar
 
 class Settings(BaseSettings):
 
@@ -14,23 +14,23 @@ class Settings(BaseSettings):
     db_name: str = Field(...)
     db_username: str = Field(...)
     db_password: str = Field(...)
+    logger: ClassVar[AsyncLogger] = AsyncLogger()
 
-logger = AsyncLogger()
-    def __init__(self, env: str = 'dev', **kwargs):
+    def __init__(cls, env: str = 'dev', **kwargs):
         try:
-            env_file: Path = Path(f"G:\\PilarzOPS\\RDLP-API\\config.{env}.env")
+            env_file: Path = Path(__file__).parent.parent / f"config.{env}.env"
             if not env_file.exists():
                 raise FileNotFoundError("Environment file not found")
             load_dotenv(env_file)
             super().__init__(**kwargs)
         except FileNotFoundError:
-            logger.log("ERROR", f"Environment file not found: {env_file}")
+            cls.logger.log("ERROR", f"Environment file not found: {env_file}")
             return
         except OSError:
-            logger.log("ERROR", f"Environment file not found: {env_file}")
+            cls.logger.log("ERROR", f"Environment file not found: {env_file}")
             return
         except Exception as e:
-            logger.log("ERROR", f"Unexpected error: {e}")
+            cls.ogger.log("ERROR", f"Unexpected error: {e}")
             sys.exit()
 
     class Config:
