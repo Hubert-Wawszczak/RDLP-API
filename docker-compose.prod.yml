@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    env_file:
+      - config.prod.env
+    volumes:
+      - app-logs:/app/logs
+    restart: always
+
+volumes:
+  app-logs:

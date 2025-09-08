@@ -4,7 +4,6 @@ from services.api_client import APIClient
 from services.loader import DataLoader
 from pathlib import Path
 import os
-import argparse
 from abc import ABC, abstractmethod
 
 
@@ -58,7 +57,7 @@ class MainProcess(DataProcessTemplate):
         self.api_client = APIClient(self.data_dir)
 
     async def data_fetch(self):
-        await self.api_client.fetch_data(["all"])
+        await self.api_client.fetch_data(["RDLP_Krakow_wydzielenia"]) # should be 'all'
         self.logger.log("INFO", "Finished data fetch and load process.")
 
     async def load_to_db(self):
@@ -91,7 +90,6 @@ async def main():
     process = MainProcess(data_dir, project_root)
     await process.run()
 
-# asyncio.run(main())
 
 if __name__ == "__main__":
     if os.getenv("RUN_TESTS") == "1":
