@@ -1,13 +1,3 @@
-
-
-
-
-# Logger powinien wspierać logi na poziomach DEBUG / INFO / ERROR z czytelnym formatem.
-
-# opracować w klase, dostęp do loggera przez metodę(poziom, wiadomość)
-# __  <-atrybut prywatny na obiekt loggera
-
-
 import time
 import yaml
 import asyncio
@@ -15,7 +5,7 @@ import logging
 import functools
 import logging.config
 from datetime import datetime
-from typing import Any, Callable, Optional, TypeVar, cast
+from typing import Any, Callable, TypeVar, cast
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
