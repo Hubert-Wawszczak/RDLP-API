@@ -1,32 +1,31 @@
-services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      DB_NAME: app_db
-      DB_USERNAME: app
-      DB_PASSWORD: app
-      DB_HOST: app
-      DB_PORT: 5432
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
+services:
   app:
-    build: .
-    depends_on:
-      db:
-        condition: service_healthy
-    env_file:
-      - config.dev.env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdlp-api-app
+    restart: no
+    secrets:
+      - db_host
+      - db_port
+      - db_name
+      - db_username
+      - db_password
     volumes:
       - ./logs:/app/logs
-    restart: unless-stopped
-    # ports:
-    #   - "8000:8000"
+      - ./config.yaml:/app/config.yaml
+      - ./utils/logger/logger.yaml:/app/utils/logger/logger.yaml
+    command: python main.py
 
-volumes:
-  db-data:
+secrets:
+  db_host:
+    file: ./secrets/db_host.txt
+  db_port:
+    file: ./secrets/db_port.txt
+  db_name:
+    file: ./secrets/db_name.txt
+  db_username:
+    file: ./secrets/db_username.txt
+  db_password:
+    file: ./secrets/db_password.txt
