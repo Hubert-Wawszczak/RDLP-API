@@ -4,6 +4,8 @@ from services.api_client import APIClient
 from services.loader import DataLoader
 from pathlib import Path
 import os
+import yaml
+import aiofiles
 from abc import ABC, abstractmethod
 
 
@@ -13,8 +15,9 @@ class DataProcessTemplate(ABC):
 
     async def run(self):
         await self.init_logger()
-        await self.api_client_init()
-        await self.data_fetch()
+        await self.load_config()
+        await self.init_api_client()
+        await self.api_data_fetch()
         await self.load_to_db()
         await self.end_process()
 
@@ -24,11 +27,15 @@ class DataProcessTemplate(ABC):
         pass
 
     @abstractmethod
-    async def api_client_init(self):
+    async def load_config(self):
         pass
 
     @abstractmethod
-    async def data_fetch(self):
+    async def init_api_client(self):
+        pass
+
+    @abstractmethod
+    async def api_data_fetch(self):
         pass
 
     @abstractmethod
@@ -47,17 +54,26 @@ class MainProcess(DataProcessTemplate):
         self.api_client = None
         self.logger = None
         self.project_root = root
+        self.config = None
 
     async def init_logger(self):
         print("Initializing logger")
         self.logger = AsyncLogger(self.data_dir)
 
-    async def api_client_init(self):
+    async def load_config(self):
+        async with aiofiles.open(Path(__file__).parent / 'config.yaml', 'r') as f:
+            self.logger.log("INFO", "Loading configuration file.")
+            self.config = yaml.safe_load(await f.read())
+            self.logger.log("INFO", f"Data loaded from config file: {self.config}")
+
+    async def init_api_client(self):
         self.logger.log("INFO", "Starting data fetch and load process.")
         self.api_client = APIClient(self.data_dir)
 
-    async def data_fetch(self):
-        await self.api_client.fetch_data(["RDLP_Krakow_wydzielenia"]) # should be 'all'
+    async def api_data_fetch(self):
+        endpoints = self.config.get("endpoints")
+        batch_size = self.config.get("batch_size")
+        await self.api_client.fetch_data(endpoints, batch_size) # should be 'all' "RDLP_Krakow_wydzielenia"
         self.logger.log("INFO", "Finished data fetch and load process.")
 
     async def load_to_db(self):
