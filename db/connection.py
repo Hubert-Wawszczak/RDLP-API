@@ -15,8 +15,8 @@ logger = AsyncLogger("G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml")
 @singleton
 class DBConnection:
 
-    def __init__(self, mode: str = "dev"):
-        self.__cfg = Settings(mode)
+    def __init__(self):
+        self.__cfg = Settings()
         self.__connection = None
         self.__pool = None
 
@@ -83,6 +83,7 @@ class DBConnection:
             return self.__pool
         except Exception as e:
             logger.log("ERROR", f"Failed to create connection pool: {str(e)}")
+            logger.log("INFO", f"Credentials used: {self.__cfg.model_dump()}")
             self.__pool = None
             raise asyncpg.exceptions.PostgresConnectionError(str(e))
 
@@ -134,7 +135,7 @@ if __name__ == "__main__":
         await q1.connect()
         await asyncio.sleep(3)
 
-        asdf = await q1.execute_query("SELECT * FROM pg_tables WHERE schemaname = 'rdlp';")
+        asdf = await q1.execute_query("SELECT * FROM pg_tables WHERE schemaname = 'public';")
         for i in asdf:
             print(str(time.time())+ str(i))
         #await q1.close()
