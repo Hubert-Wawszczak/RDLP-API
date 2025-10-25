@@ -153,6 +153,7 @@ class DataLoader:
 
         if batch is not None:
             tasks = [ self.__process_file(f) for f in batch if f.is_file() ]
+            logger.log("INFO", f"Processing batch of {len(tasks)} files for endpoint {batch[0].name.split('_wydzielenia')[0]}")
             return await asyncio.gather(*tasks)
         else:
             raise FileNotFoundError
@@ -181,6 +182,7 @@ class DataLoader:
         """
 
         if self.pool is None:
+            logger.log("INFO", "Creating database connection pool.")
             self.pool = await self.connection.create_pool(self.pool_size // 2, self.pool_size)
 
         async for batch_future in self.__batch_process_files():
@@ -189,6 +191,7 @@ class DataLoader:
             validated_items = [
                 item.model_dump() for sublist in batch_results for item in sublist if item
             ]
+            logger.log("INFO", f"Validated {len(validated_items)} items in current batch.")
             if not validated_items:
                 continue
 
@@ -207,11 +210,12 @@ class DataLoader:
                    columns = list(items[0].keys())
                    col_names = ', '.join([f'"{col}"' if col != 'geometry' else '"geometry"' for col in columns])
                    placeholders = ', '.join([f'${i+1}' if col != 'geometry' else f'ST_GeomFromText(${i+1}, 4326)' for i, col in enumerate(columns)])
-                   sql = (f'INSERT INTO rdlp.{table_name} ({col_names}) VALUES ({placeholders})'
+                   sql = (f'INSERT INTO public.rdlp_{table_name} ({col_names}) VALUES ({placeholders})'
                           f'ON CONFLICT ("adr_for", "rdlp_name") DO NOTHING'
                           )
                    rows = [tuple(item[col] for col in columns) for item in items]
                    await conn.executemany(sql, rows)
+            logger.log("INFO", f"Inserted {len(rows)} records into {table_name}.")
 
 
 
