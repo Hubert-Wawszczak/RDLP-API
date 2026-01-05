@@ -198,7 +198,9 @@ class TestDataLoader(unittest.IsolatedAsyncioTestCase):
         mock_conn = AsyncMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=None)
-        self.loader.pool.acquire.return_value = mock_conn
+        # pool.acquire() returns an async context manager, not a coroutine
+        # We need to make acquire() return the context manager directly
+        self.loader.pool.acquire = MagicMock(return_value=mock_conn)
         
         mock_wkt_dumps.return_value = "GEOMETRY_WKT"
         

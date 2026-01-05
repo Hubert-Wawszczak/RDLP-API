@@ -157,8 +157,8 @@ class TestDBConnection(unittest.IsolatedAsyncioTestCase):
     @patch("db.connection.logger.log")
     async def test_close_success(self, mock_log):
         mock_conn = AsyncMock()
-        # is_closed() is called as method in close(), so make it callable
-        mock_conn.is_closed = lambda: False
+        # is_closed() is called as async method in close()
+        mock_conn.is_closed = AsyncMock(return_value=False)
         mock_conn.close = AsyncMock()
         self.db._DBConnection__connection = mock_conn
 
