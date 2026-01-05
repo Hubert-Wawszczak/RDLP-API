@@ -1,0 +1,13 @@
+# Configuration file for RDLP-API
+# This file configures which endpoints to fetch and batch processing settings
+
+# Endpoints to fetch data from
+# Options:
+#   - 'all' - fetch all RDLP endpoints
+#   - List of specific endpoints, e.g. ['RDLP_Bialystok_wydzielenia', 'RDLP_Krakow_wydzielenia']
+endpoints: 'all'
+
+# Batch size for processing files
+# Number of files to process concurrently
+batch_size: 10000
+

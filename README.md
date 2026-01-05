@@ -36,12 +36,19 @@ cp .env.prod.example .env.prod
 # Edytuj .env.prod z właściwymi wartościami
 ```
 
-4. Uruchom migracje bazy danych:
+4. Skonfiguruj plik config.yaml:
+```bash
+# Plik config.yaml już istnieje z domyślnymi ustawieniami
+# Możesz go edytować, aby zmienić endpoints i batch_size
+nano config.yaml
+```
+
+5. Uruchom migracje bazy danych:
 ```bash
 psql -U postgres -d forest_db -f create_rdlp.sql
 ```
 
-5. Uruchom aplikację:
+6. Uruchom aplikację:
 ```bash
 python main.py
 ```

@@ -35,7 +35,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # image: ghcr.io/hubert-wawszczak/rdlp_api:prod  # Uncomment when image is available in registry
+    image: ghcr.io/hubert-wawszczak/rdlp_api:prod  # Uncomment when image is available in registry
     restart: unless-stopped
     env_file: .env.prod
     container_name: rdlp-api
