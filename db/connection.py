@@ -9,11 +9,14 @@ from utils.singleton import singleton
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 
 
-logger = AsyncLogger("G:\\PilarzOPS\\RDLP-API\\utils\\logger\\logger.yaml")
+logger = AsyncLogger()
 
 
 @singleton
 class DBConnection:
+    """
+    Singleton class for managing asynchronous PostgreSQL connections and connection pools.
+    """
 
     def __init__(self):
         self.__cfg = Settings()
@@ -33,6 +36,15 @@ class DBConnection:
         before_sleep=before_sleep_log(logging.getLogger(__name__), logging.WARNING)
     )
     async def connect(self) -> bool:
+        """
+        Establish a connection to the PostgreSQL database with retry logic.
+
+        Returns:
+            bool: True if connection is successful, False otherwise.
+
+        Raises:
+            asyncpg.exceptions.PostgresConnectionError: If connection fails.
+        """
         try:
             if await self.is_connected():
                 logger.log("INFO", "Already connected to the database.")
@@ -66,6 +78,19 @@ class DBConnection:
         before_sleep=before_sleep_log(logging.getLogger(__name__), logging.WARNING)
     )
     async def create_pool(self, min_size: int = 1, max_size: int = 10):
+        """
+        Create a connection pool for PostgreSQL with retry logic.
+
+        Args:
+            min_size (int): Minimum number of connections in the pool.
+            max_size (int): Maximum number of connections in the pool.
+
+        Returns:
+            asyncpg.pool.Pool: The created connection pool.
+
+        Raises:
+            asyncpg.exceptions.PostgresConnectionError: If pool creation fails.
+        """
         try:
             if self.__pool is not None:
                 logger.log("INFO", "Connection pool already exists.")
@@ -88,6 +113,9 @@ class DBConnection:
             raise asyncpg.exceptions.PostgresConnectionError(str(e))
 
     async def close(self):
+        """
+        Close the active database connection if it exists.
+        """
         if self.__connection and not self.__connection.is_closed():
             try:
                 await self.__connection.close()
@@ -99,10 +127,30 @@ class DBConnection:
             logger.log("INFO", "Connection is already closed or was never established.")
 
     async def is_connected(self) -> bool:
+        """
+        Check if the database connection is active.
+
+        Returns:
+            bool: True if connected, False otherwise.
+        """
         return self.__connection is not None and not await self.__connection.is_closed()
 
     # FETCH queries
     async def execute_query(self, query: str, *args):
+        """
+        Execute a SQL SELECT query and return the results.
+
+        Args:
+            query (str): The SQL query to execute.
+            *args: Query parameters.
+
+        Returns:
+            list: Query results.
+
+        Raises:
+            RuntimeError: If not connected.
+            Exception: If query execution fails.
+        """
         if not await self.is_connected():
             raise RuntimeError("Not connected to the database.")
         try:
@@ -113,6 +161,20 @@ class DBConnection:
 
     # INSERT/UPDATE/DELETE queries
     async def execute_command(self, command: str, *args):
+        """
+        Execute a SQL command (INSERT, UPDATE, DELETE).
+
+        Args:
+            command (str): The SQL command to execute.
+            *args: Command parameters.
+
+        Returns:
+            str: Command execution status.
+
+        Raises:
+            RuntimeError: If not connected.
+            Exception: If command execution fails.
+        """
         try:
             if not await self.is_connected():
                 raise RuntimeError("Not connected to the database.")

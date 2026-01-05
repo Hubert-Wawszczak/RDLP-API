@@ -210,12 +210,13 @@ class DataLoader:
                    columns = list(items[0].keys())
                    col_names = ', '.join([f'"{col}"' if col != 'geometry' else '"geometry"' for col in columns])
                    placeholders = ', '.join([f'${i+1}' if col != 'geometry' else f'ST_GeomFromText(${i+1}, 4326)' for i, col in enumerate(columns)])
-                   sql = (f'INSERT INTO public.rdlp_{table_name} ({col_names}) VALUES ({placeholders})'
+                   sql = (f'INSERT INTO public.rdlp_{table_name}_partition ({col_names}) VALUES ({placeholders})'
                           f'ON CONFLICT ("adr_for", "rdlp_name") DO NOTHING'
                           )
                    rows = [tuple(item[col] for col in columns) for item in items]
                    await conn.executemany(sql, rows)
             logger.log("INFO", f"Inserted {len(rows)} records into {table_name}.")
+        self.connection.close()
 
 
 
