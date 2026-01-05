@@ -58,10 +58,15 @@ services:
       start_period: 40s
 
   frontend:
-    image: ghcr.io/hubert-wawszczak/pilarzops_web:prod
+    # Placeholder - will be added later
+    image: nginx:alpine
     restart: unless-stopped
     networks:
       - app-network
+    # Temporary placeholder command
+    command: sh -c "echo 'Frontend placeholder - will be replaced later' && tail -f /dev/null"
+    # Uncomment when frontend image is available:
+    # image: ghcr.io/hubert-wawszczak/pilarzops_web:prod
 
   nginx:
     image: nginx:alpine
