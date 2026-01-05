@@ -125,12 +125,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: build
-    if: |
-      github.ref == 'refs/heads/main' && 
-      github.event_name == 'push' &&
-      secrets.SERVER_IP != '' &&
-      secrets.SERVER_USER != '' &&
-      secrets.SSH_KEY != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
       url: https://your-domain.com
@@ -139,7 +134,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check deployment secrets
+        id: check-secrets
+        run: |
+          if [ -z "${{ secrets.SERVER_IP }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SSH_KEY }}" ]; then
+            echo "Deployment secrets are not configured. Skipping deployment."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Deployment secrets are configured."
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy to server
+        if: steps.check-secrets.outputs.skip != 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_IP }}
