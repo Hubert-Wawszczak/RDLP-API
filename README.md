@@ -71,11 +71,24 @@ Projekt używa GitHub Actions do automatycznego testowania, budowania i wdrażan
 
 ### Konfiguracja Secrets
 
-W GitHub Settings → Secrets and variables → Actions dodaj:
+**Wymagane dla automatycznego wdrożenia:**
 
-- `SERVER_IP` - IP serwera produkcyjnego
-- `SERVER_USER` - Użytkownik SSH (np. `root`)
-- `SSH_KEY` - Prywatny klucz SSH do serwera
+W GitHub Settings → Secrets and variables → Actions dodaj następujące sekrety:
+
+- `SERVER_IP` - IP adres lub hostname serwera produkcyjnego (np. `192.168.1.100` lub `server.example.com`)
+- `SERVER_USER` - Użytkownik SSH do logowania (np. `root` lub `deploy`)
+- `SSH_KEY` - Prywatny klucz SSH w formacie OpenSSH (cała zawartość pliku `~/.ssh/id_rsa`)
+
+**Uwaga:** Jeśli sekrety nie są ustawione, workflow deploymentu zostanie pominięty automatycznie. Workflow sprawdza dostępność sekretów przed próbą wdrożenia.
+
+**Jak wygenerować klucz SSH:**
+
+```bash
+# Na lokalnym komputerze
+ssh-keygen -t rsa -b 4096 -C "github-actions"
+# Skopiuj zawartość ~/.ssh/id_rsa (prywatny klucz) do sekretu SSH_KEY
+# Skopiuj zawartość ~/.ssh/id_rsa.pub (publiczny klucz) do ~/.ssh/authorized_keys na serwerze
+```
 
 ### Ręczne wdrożenie
 

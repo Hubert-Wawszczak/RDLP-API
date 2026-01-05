@@ -125,7 +125,12 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: |
+      github.ref == 'refs/heads/main' && 
+      github.event_name == 'push' &&
+      secrets.SERVER_IP != '' &&
+      secrets.SERVER_USER != '' &&
+      secrets.SSH_KEY != ''
     environment:
       name: production
       url: https://your-domain.com
@@ -140,8 +145,10 @@ jobs:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }}
+          port: 22
+          timeout: 30s
           script: |
-            cd /srv/app
+            cd /srv/app/rdlp-api || cd /srv/app
             docker compose -f docker-compose.prod.yml pull rdlp_api
             docker compose -f docker-compose.prod.yml up -d rdlp_api
             docker system prune -f
