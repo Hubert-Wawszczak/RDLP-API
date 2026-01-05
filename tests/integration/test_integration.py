@@ -52,7 +52,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         mock_conn = AsyncMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=None)
-        mock_pool.acquire.return_value = mock_conn
+        # pool.acquire() returns an async context manager, not a coroutine
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
         self.loader.pool = mock_pool
 
         # Mock file processing
@@ -79,7 +80,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         mock_conn = AsyncMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=None)
-        mock_pool.acquire.return_value = mock_conn
+        # pool.acquire() returns an async context manager, not a coroutine
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
         self.loader.pool = mock_pool
 
         # Create mock validated data as RDLPData object
