@@ -73,6 +73,11 @@ class MainProcess(DataProcessTemplate):
     async def api_data_fetch(self):
         endpoints = self.config.get("endpoints")
         batch_size = self.config.get("batch_size")
+        
+        # Convert string to list if needed
+        if isinstance(endpoints, str):
+            endpoints = [endpoints]
+        
         await self.api_client.fetch_data(endpoints, batch_size) # should be 'all' "RDLP_Krakow_wydzielenia"
         self.logger.log("INFO", "Finished data fetch and load process.")
 

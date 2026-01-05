@@ -154,7 +154,9 @@ class APIClient:
 
         options = get_args(self.__ENDPOINTS)
         for item in endpoints:
-            assert item in options, logger.log("ERROR", f"Invalid endpoint: {endpoints}. Must be one of {self.__ENDPOINTS}")
+            if item not in options:
+                logger.log("ERROR", f"Invalid endpoint: {item}. Must be one of {self.__ENDPOINTS}")
+                raise ValueError(f"Invalid endpoint: {item}. Must be one of {self.__ENDPOINTS}")
         try:
             async with aiohttp.ClientSession() as session:
                 if "all" in endpoints:
