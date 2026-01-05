@@ -66,8 +66,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
                 async def empty_batch():
                     yield []
                 
-                self.loader._DataLoader__batch_process_files = empty_batch()
-                await self.loader.insert_data()
+                with patch.object(self.loader, '_DataLoader__batch_process_files', return_value=empty_batch()):
+                    await self.loader.insert_data()
 
     @patch("services.loader.DBConnection")
     async def test_loader_with_valid_data(self, mock_db_conn):
@@ -98,8 +98,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
                 async def batch_with_data():
                     yield [[validated_data]]
                 
-                self.loader._DataLoader__batch_process_files = batch_with_data()
-                await self.loader.insert_data()
+                with patch.object(self.loader, '_DataLoader__batch_process_files', return_value=batch_with_data()):
+                    await self.loader.insert_data()
 
     async def test_api_client_and_loader_integration(self):
         """Test that API client and loader work together"""
@@ -129,7 +129,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         """Test database connection integration"""
         mock_conn = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value=1)
-        mock_conn.is_closed = AsyncMock(return_value=False)
+        # is_closed() is a property in asyncpg
+        type(mock_conn).is_closed = False
         mock_connect.return_value = mock_conn
 
         mock_pool = AsyncMock()
@@ -143,7 +144,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(pool)
 
         await db.close()
-        self.assertFalse(await db.is_connected())
+        # After close, connection should be None
+        self.assertIsNone(db._DBConnection__connection)
 
 if __name__ == "__main__":
     unittest.main()

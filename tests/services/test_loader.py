@@ -210,25 +210,24 @@ class TestDataLoader(unittest.IsolatedAsyncioTestCase):
             "geometry": {"type": "MultiPolygon", "coordinates": [[[[0,0],[1,0],[1,1],[0,1],[0,0]]]]}
         }]
         
+        # Mock __batch_process_files to return the generator
         async def batch_gen():
             yield [validated_items]
         
-        self.loader._DataLoader__batch_process_files = batch_gen()
-        
-        await self.loader.insert_data()
+        with patch.object(self.loader, '_DataLoader__batch_process_files', return_value=batch_gen()):
+            await self.loader.insert_data()
         
         mock_conn.executemany.assert_called_once()
 
     @patch("services.loader.logger")
     async def test_batch_process_files(self, mock_logger):
-        # Create temporary test files
+        # Mock Path.glob to return test files
         test_files = [
-            self.data_dir / "RDLP_Bialystok_wydzielenia_0_123.json",
-            self.data_dir / "RDLP_Krakow_wydzielenia_0_456.json"
+            Path("RDLP_Bialystok_wydzielenia_0_123.json"),
+            Path("RDLP_Krakow_wydzielenia_0_456.json")
         ]
         
-        # Mock glob to return test files
-        with patch.object(self.loader.data_dir, "glob", return_value=test_files):
+        with patch("pathlib.Path.glob", return_value=test_files):
             with patch.object(self.loader, "_DataLoader__process_single_batch", new_callable=AsyncMock) as mock_batch:
                 mock_batch.return_value = [[], []]
                 self.loader.batch_size = 1

@@ -11,30 +11,34 @@ from config.config import Settings
 
 class TestSettings(unittest.TestCase):
 
-    def test_load_dev_env(self):
-        settings = Settings(env="dev")
+    def test_settings_initialization(self):
+        """Test that Settings can be initialized"""
+        settings = Settings()
         self.assertIsInstance(settings.db_host, str)
         self.assertIsInstance(settings.db_port, str)
         self.assertIsInstance(settings.db_name, str)
         self.assertIsInstance(settings.db_username, str)
         self.assertIsInstance(settings.db_password, str)
 
-        self.assertEqual(settings.db_host, "localhost")
-        self.assertEqual(settings.db_port, "5432")
-        self.assertEqual(settings.db_name, "postgres")
-        self.assertEqual(settings.db_username, "postgres")
-        self.assertEqual(settings.db_password, "admin")
-
-    def test_load_prod_env(self):
-        settings = Settings(env="prod")
-        self.assertIsInstance(settings.db_host, str)
-        self.assertIsInstance(settings.db_port, str)
-        self.assertIsInstance(settings.db_name, str)
-        self.assertIsInstance(settings.db_username, str)
-        self.assertIsInstance(settings.db_password, str)
-
-        self.assertEqual(settings.db_host, "localhost")
-        self.assertEqual(settings.db_port, "5432")
-        self.assertEqual(settings.db_name, "postgres")
-        self.assertEqual(settings.db_username, "postgres")
-        self.assertEqual(settings.db_password, "admin")
+    def test_settings_from_env(self):
+        """Test that Settings reads from environment variables"""
+        import os
+        os.environ['DB_HOST'] = 'test_host'
+        os.environ['DB_PORT'] = '5433'
+        os.environ['DB_NAME'] = 'test_db'
+        os.environ['DB_USERNAME'] = 'test_user'
+        os.environ['DB_PASSWORD'] = 'test_pass'
+        
+        settings = Settings()
+        self.assertEqual(settings.db_host, 'test_host')
+        self.assertEqual(settings.db_port, '5433')
+        self.assertEqual(settings.db_name, 'test_db')
+        self.assertEqual(settings.db_username, 'test_user')
+        self.assertEqual(settings.db_password, 'test_pass')
+        
+        # Cleanup
+        del os.environ['DB_HOST']
+        del os.environ['DB_PORT']
+        del os.environ['DB_NAME']
+        del os.environ['DB_USERNAME']
+        del os.environ['DB_PASSWORD']

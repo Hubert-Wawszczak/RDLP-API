@@ -45,8 +45,7 @@ class TestAPIClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_fetch_page.await_count, 1)  # Only initial page
 
     @patch("services.api_client.aiohttp.ClientSession")
-    @patch("services.api_client.APIClient._APIClient__get_item_total", new_callable=AsyncMock)
-    async def test_get_item_total_success(self, mock_get_total, mock_session):
+    async def test_get_item_total_success(self, mock_session):
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={"numberMatched": 1500})
@@ -56,8 +55,7 @@ class TestAPIClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 1500)
 
     @patch("services.api_client.aiohttp.ClientSession")
-    @patch("services.api_client.APIClient._APIClient__get_item_total", new_callable=AsyncMock)
-    async def test_get_item_total_failure(self, mock_get_total, mock_session):
+    async def test_get_item_total_failure(self, mock_session):
         mock_response = AsyncMock()
         mock_response.status = 500
         mock_session.get.return_value.__aenter__.return_value = mock_response
@@ -136,9 +134,11 @@ class TestAPIClient(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result)
 
     def test_init_with_custom_save_dir(self):
-        custom_dir = Path("/custom/path")
-        client = APIClient(save_dir=custom_dir)
-        self.assertEqual(client.save_dir, custom_dir)
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as tmpdir:
+            custom_dir = Path(tmpdir)
+            client = APIClient(save_dir=custom_dir)
+            self.assertEqual(client.save_dir, custom_dir)
 
     def test_init_creates_save_dir(self):
         with patch("pathlib.Path.mkdir") as mock_mkdir:
