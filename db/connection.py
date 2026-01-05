@@ -116,9 +116,10 @@ class DBConnection:
         """
         Close the active database connection if it exists.
         """
-        if self.__connection and not self.__connection.is_closed():
+        if self.__connection:
             try:
-                await self.__connection.close()
+                if not await self.__connection.is_closed():
+                    await self.__connection.close()
             except Exception as e:
                 logger.log("ERROR", f"Failed to close the connection: {str(e)}")
             finally:

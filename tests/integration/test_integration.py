@@ -82,14 +82,15 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         mock_pool.acquire.return_value = mock_conn
         self.loader.pool = mock_pool
 
-        # Create mock validated data
-        validated_data = {
-            "id": 1,
-            "adr_for": "test123",
-            "rdlp_name": "bialystok",
-            "forest_range_name": "Test Range",
-            "geometry": None
-        }
+        # Create mock validated data as RDLPData object
+        from utils.validators import RDLPData
+        validated_data = RDLPData(
+            id=1,
+            adr_for="test123",
+            rdlp_name="bialystok",
+            forest_range_name="Test Range",
+            geometry=None
+        )
 
         with patch("services.loader.aiofiles.open") as mock_aiofiles:
             with patch("services.loader.json.loads") as mock_json:
@@ -149,6 +150,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         pool = await db.create_pool()
         self.assertIsNotNone(pool)
 
+        # Ensure is_closed returns False so close() will actually close it
+        mock_conn.is_closed = AsyncMock(return_value=False)
         await db.close()
         # After close, connection should be None
         self.assertIsNone(db._DBConnection__connection)

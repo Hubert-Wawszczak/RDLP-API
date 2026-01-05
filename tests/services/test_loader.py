@@ -202,13 +202,14 @@ class TestDataLoader(unittest.IsolatedAsyncioTestCase):
         
         mock_wkt_dumps.return_value = "GEOMETRY_WKT"
         
-        validated_items = [{
-            "id": 1,
-            "adr_for": "test123",
-            "rdlp_name": "bialystok",
-            "forest_range_name": "Test Range",
-            "geometry": {"type": "MultiPolygon", "coordinates": [[[[0,0],[1,0],[1,1],[0,1],[0,0]]]]}
-        }]
+        from utils.validators import RDLPData
+        validated_items = [RDLPData(
+            id=1,
+            adr_for="test123",
+            rdlp_name="bialystok",
+            forest_range_name="Test Range",
+            geometry={"type": "MultiPolygon", "coordinates": [[[[0,0],[1,0],[1,1],[0,1],[0,0]]]]}
+        )]
         
         # Mock __batch_process_files to return async generator that yields coroutines
         async def batch_gen():
