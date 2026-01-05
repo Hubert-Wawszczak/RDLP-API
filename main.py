@@ -88,8 +88,14 @@ class MainProcess(DataProcessTemplate):
 
 def run_tests():
     import unittest
+    import sys
+    from pathlib import Path
 
     project_root = Path(__file__).parent
+    # Add project root to Python path for imports
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    
     loader = unittest.TestLoader()
     suite = loader.discover(start_dir=str(project_root / 'tests'), pattern='test_*.py', top_level_dir=str(project_root))
 

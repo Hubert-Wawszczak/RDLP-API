@@ -60,6 +60,7 @@ jobs:
           DB_NAME: test_db
           DB_USERNAME: test_user
           DB_PASSWORD: test_password
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           RUN_TESTS=1 python -m unittest discover -s tests -p "test_*.py" -v
 

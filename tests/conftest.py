@@ -1,4 +1,4 @@
-"""Test package for RDLP-API"""
+"""Pytest configuration and path setup"""
 import sys
 from pathlib import Path
 
