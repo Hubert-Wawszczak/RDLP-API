@@ -64,7 +64,10 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
                 mock_json.return_value = {"features": []}
 
                 async def empty_batch():
-                    yield []
+                    # __batch_process_files yields coroutines
+                    async def mock_batch():
+                        return []
+                    yield mock_batch()
                 
                 with patch.object(self.loader, '_DataLoader__batch_process_files', return_value=empty_batch()):
                     await self.loader.insert_data()
@@ -96,7 +99,10 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
                 mock_json.return_value = {"features": []}
 
                 async def batch_with_data():
-                    yield [[validated_data]]
+                    # __batch_process_files yields coroutines
+                    async def mock_batch():
+                        return [[validated_data]]
+                    yield mock_batch()
                 
                 with patch.object(self.loader, '_DataLoader__batch_process_files', return_value=batch_with_data()):
                     await self.loader.insert_data()
@@ -129,8 +135,8 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         """Test database connection integration"""
         mock_conn = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value=1)
-        # is_closed() is a property in asyncpg
-        type(mock_conn).is_closed = False
+        # is_closed() is called as async method
+        mock_conn.is_closed = AsyncMock(return_value=False)
         mock_connect.return_value = mock_conn
 
         mock_pool = AsyncMock()

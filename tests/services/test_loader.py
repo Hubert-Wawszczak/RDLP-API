@@ -210,9 +210,12 @@ class TestDataLoader(unittest.IsolatedAsyncioTestCase):
             "geometry": {"type": "MultiPolygon", "coordinates": [[[[0,0],[1,0],[1,1],[0,1],[0,0]]]]}
         }]
         
-        # Mock __batch_process_files to return the generator
+        # Mock __batch_process_files to return async generator that yields coroutines
         async def batch_gen():
-            yield [validated_items]
+            # __batch_process_files yields coroutines from __process_single_batch
+            async def mock_batch():
+                return [validated_items]
+            yield mock_batch()
         
         with patch.object(self.loader, '_DataLoader__batch_process_files', return_value=batch_gen()):
             await self.loader.insert_data()
