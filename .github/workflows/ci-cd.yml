@@ -64,6 +64,11 @@ jobs:
           DB_NAME: test_db
           DB_USERNAME: test_user
           DB_PASSWORD: test_password
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python run_tests.py

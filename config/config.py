@@ -10,10 +10,10 @@ from typing import ClassVar
 class Settings(BaseSettings):
 
     db_host: str = Field(default_factory=lambda:  Settings.__get_db_host())
-    db_port: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_port", "DB_PORT"))
-    db_name: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_name", "DB_NAME"))
-    db_username: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_username", "DB_USERNAME"))
-    db_password: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_password", "DB_PASSWORD"))
+    db_port: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_port", "DB_PORT") or "5432")
+    db_name: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_name", "DB_NAME") or "postgres")
+    db_username: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_username", "DB_USERNAME") or "postgres")
+    db_password: str = Field(default_factory=lambda:  Settings.__read_secrets("/run/secrets/db_password", "DB_PASSWORD") or "")
     logger: ClassVar[AsyncLogger] = AsyncLogger()
 
     def __init__(cls, **kwargs):
@@ -33,7 +33,8 @@ class Settings(BaseSettings):
                 return file_path.read_text().strip()
         except Exception as e:
             cls.logger.log("ERROR", f"Error reading secret file {secret_path}: {e}")
-        return os.getenv(env_var)
+        result = os.getenv(env_var)
+        return result if result is not None else ""
 
     @classmethod
     def __get_db_host(cls) -> str:
