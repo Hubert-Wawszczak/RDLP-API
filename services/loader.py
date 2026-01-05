@@ -13,7 +13,6 @@ import unittest
 from pathlib import Path
 from datetime import datetime
 from pydantic import ValidationError
-from pydantic_geojson import MultiPolygonModel
 from utils.validators import RDLPData
 from utils.logger.logger import AsyncLogger
 from db.connection import DBConnection
@@ -57,6 +56,7 @@ class DataLoader:
     def __validate_data(self, data, file: Path):
         """
         Validates a single data item using the RDLPData model.
+        Aligned with WydzielenieResponse schema from backend.
 
         Args:
             data (dict): The data item to validate.
@@ -67,28 +67,53 @@ class DataLoader:
         """
 
         try:
+            properties = data.get("properties", {})
+            geometry_data = data.get('geometry')
+            
+            # Extract RDLP name from filename
+            match = re.search(".*_wydzielenia", file.name.split('/')[-1])
+            if not match:
+                logger.log("ERROR", f"{file} Could not extract RDLP name from filename")
+                return []
+            rdlp_name = self.__ENDPOINTS_DICT.get(match.group())
+            if not rdlp_name:
+                logger.log("ERROR", f"{file} Unknown RDLP name: {match.group()}")
+                return []
+            
+            # Extract forest_range_name from properties or use default
+            forest_range_name = properties.get("forest_range_name") or properties.get("nazwa") or "unknown"
+            
+            # Build item dictionary with optional fields
             item = {
-                "id": data.get("id", {}),
-                "area_type": data.get("properties", {}).get("area_type"),
-                "a_i_num": data.get("properties", {}).get("a_i_num"),
-                "silvicult": data.get("properties", {}).get("silvicult"),
-                "stand_stru": data.get("properties", {}).get("stand_stru"),
-                "sub_area": data.get("properties", {}).get("sub_area"),
-                "species_cd": data.get("properties", {}).get("species_cd"),
-                "spec_age": data.get("properties", {}).get("spec_age"),
-                "nazwa": data.get("properties", {}).get("nazwa"),
-                "adr_for": data.get("properties", {}).get("adr_for"),
-                "site_type": data.get("properties", {}).get("site_type"),
-                "forest_fun": data.get("properties", {}).get("forest_fun"),
-                "rotat_age": data.get("properties", {}).get("rotat_age"),
-                "prot_categ": data.get("properties", {}).get("prot_categ"),
-                "part_cd": data.get("properties", {}).get("part_cd"),
-                "a_year": data.get("properties", {}).get("a_year"),
-                "geometry": MultiPolygonModel(**data.get('geometry', {})),
-                "load_time": datetime.now(),
-                "forest_range_name": "asdf",  # wtf is this
-                "rdlp_name": self.__ENDPOINTS_DICT[re.search(".*_wydzielenia", file.name.split('/')[-1]).group()]
+                "id": data.get("id"),
+                "area_type": properties.get("area_type"),
+                "a_i_num": properties.get("a_i_num"),
+                "silvicult": properties.get("silvicult"),
+                "stand_stru": properties.get("stand_stru"),
+                "sub_area": properties.get("sub_area"),
+                "species_cd": properties.get("species_cd"),
+                "spec_age": properties.get("spec_age"),
+                "nazwa": properties.get("nazwa"),
+                "adr_for": properties.get("adr_for"),
+                "site_type": properties.get("site_type"),
+                "forest_fun": properties.get("forest_fun"),
+                "rotat_age": properties.get("rotat_age"),
+                "prot_categ": properties.get("prot_categ"),
+                "part_cd": properties.get("part_cd"),
+                "a_year": properties.get("a_year"),
+                "geometry": geometry_data if geometry_data else None,
+                "forest_range_name": forest_range_name,
+                "rdlp_name": rdlp_name
             }
+            
+            # Validate required fields
+            if not item.get("id"):
+                logger.log("ERROR", f"{file} Missing required field: id")
+                return []
+            if not item.get("adr_for"):
+                logger.log("ERROR", f"{file} Missing required field: adr_for")
+                return []
+            
             validated = RDLPData(**item)
             return validated
         except ValidationError as e:
@@ -195,27 +220,50 @@ class DataLoader:
             if not validated_items:
                 continue
 
-            # Group records by table name
+            # Group records by table name and process geometry
             table_groups = {}
             for item in validated_items:
                 table_name = f"{item['rdlp_name']}_wydzielenia"
-                if isinstance(item['geometry'], dict):
-                    geom = shapely.geometry.shape(item['geometry'])
-                    item['geometry'] = shapely.wkt.dumps(geom)
+                
+                # Convert geometry from GeoJSON to WKT if present
+                if item.get('geometry') is not None:
+                    if isinstance(item['geometry'], dict):
+                        try:
+                            geom = shapely.geometry.shape(item['geometry'])
+                            item['geometry'] = shapely.wkt.dumps(geom)
+                        except Exception as e:
+                            logger.log("ERROR", f"Failed to convert geometry to WKT: {e}")
+                            item['geometry'] = None
+                    elif isinstance(item['geometry'], str):
+                        # Already in WKT format, keep as is
+                        pass
+                    else:
+                        # Unknown format, set to None
+                        item['geometry'] = None
+                
                 table_groups.setdefault(table_name, []).append(item)
 
             # Insert each group into its table
             async with self.pool.acquire() as conn:
                for table_name, items in table_groups.items():
-                   columns = list(items[0].keys())
+                   if not items:
+                       continue
+                   
+                   # Filter out load_time if present (not in backend schema)
+                   columns = [col for col in items[0].keys() if col != 'load_time']
+                   
                    col_names = ', '.join([f'"{col}"' if col != 'geometry' else '"geometry"' for col in columns])
-                   placeholders = ', '.join([f'${i+1}' if col != 'geometry' else f'ST_GeomFromText(${i+1}, 4326)' for i, col in enumerate(columns)])
-                   sql = (f'INSERT INTO public.rdlp_{table_name}_partition ({col_names}) VALUES ({placeholders})'
+                   placeholders = ', '.join([
+                       f'${i+1}' if col != 'geometry' else f'ST_GeomFromText(${i+1}, 4326)' 
+                       for i, col in enumerate(columns)
+                   ])
+                   
+                   sql = (f'INSERT INTO rdlp.{table_name}_partition ({col_names}) VALUES ({placeholders})'
                           f'ON CONFLICT ("adr_for", "rdlp_name") DO NOTHING'
                           )
-                   rows = [tuple(item[col] for col in columns) for item in items]
+                   rows = [tuple(item.get(col) for col in columns) for item in items]
                    await conn.executemany(sql, rows)
-            logger.log("INFO", f"Inserted {len(rows)} records into {table_name}.")
+                   logger.log("INFO", f"Inserted {len(rows)} records into rdlp.{table_name}_partition.")
         self.connection.close()
 
 

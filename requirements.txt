@@ -1,0 +1,24 @@
+# Core dependencies
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# Async database
+asyncpg>=0.29.0
+
+# HTTP client and file operations
+aiohttp>=3.9.0
+aiofiles>=23.2.0
+
+# Geometry processing
+shapely>=2.0.0
+
+# Retry logic
+tenacity>=8.2.0
+
+# Configuration
+pyyaml>=6.0
+
+# Path utilities (if needed, otherwise use pathlib from stdlib)
+path>=16.0.0
+
