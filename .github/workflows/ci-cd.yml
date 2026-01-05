@@ -66,7 +66,7 @@ jobs:
           DB_PASSWORD: test_password
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          RUN_TESTS=1 python -m unittest discover -s tests -p "test_*.py" -v
+          python run_tests.py
 
   build:
     name: Build Docker Image
