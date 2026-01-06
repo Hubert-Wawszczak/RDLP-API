@@ -19,5 +19,6 @@ jobs:
 
       - name: Build and push RDLP
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/rdlp_api:prod .
-          docker push ghcr.io/${{ github.repository_owner }}/rdlp_api:prod
+            docker build -t ghcr.io/hubert-wawszczak/rdlp_api:prod .
+            docker push ghcr.io/hubert-wawszczak/rdlp_api:prod
+
