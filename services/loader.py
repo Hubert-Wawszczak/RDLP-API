@@ -414,12 +414,14 @@ class DataLoader:
                        for i, col in enumerate(columns)
                    ])
                    
-                   sql = (f'INSERT INTO rdlp.{table_name}_partition ({col_names}) VALUES ({placeholders})'
+                   # Use main table instead of partition - PostgreSQL will automatically route to correct partition
+                   # This ensures data goes to the right partition even if partition name doesn't match exactly
+                   sql = (f'INSERT INTO rdlp.{table_name} ({col_names}) VALUES ({placeholders})'
                           f'ON CONFLICT ("adr_for", "rdlp_name") DO NOTHING'
                           )
                    rows = [tuple(item.get(col) for col in columns) for item in items]
                    await conn.executemany(sql, rows)
-                   logger.log("INFO", f"Inserted {len(rows)} records into rdlp.{table_name}_partition.")
+                   logger.log("INFO", f"Inserted {len(rows)} records into rdlp.{table_name}.")
         await self.connection.close()
 
 
