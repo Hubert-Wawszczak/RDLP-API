@@ -75,6 +75,10 @@ class DataLoader:
             properties_id = properties.get("id")
             item_id = feature_id or properties_id
             
+            # Early return if id is missing - this is likely not a wydzielenia file
+            if not item_id:
+                return None
+            
             # Extract RDLP name from filename or path
             # Try to match pattern like "RDLP_*_wydzielenia" first (old API format)
             filename = file.name.split('/')[-1]
@@ -151,9 +155,21 @@ class DataLoader:
             validated = RDLPData(**item)
             return validated
         except ValidationError as e:
+            # Don't log validation errors for files that are clearly not wydzielenia
+            # (e.g., G_SUBAREA files that were not filtered out)
+            file_str = str(file)
+            error_str = str(e)
+            if 'G_SUBAREA' in file_str or 'G_' in file_str or 'SUBAREA' in file_str:
+                return None
+            # Also skip if the error is about missing id field (likely not a wydzielenia)
+            if 'id' in error_str.lower() and 'required' in error_str.lower():
+                return None
             logger.log("ERROR", f"{file} Validation error {e.json()}")
             return []
         except Exception as e:
+            # Don't log errors for files that are clearly not wydzielenia
+            if 'G_SUBAREA' in str(file) or 'G_' in str(file):
+                return None
             logger.log("ERROR", f"{file} Unexpected error: {e}")
             return []
 
@@ -191,6 +207,9 @@ class DataLoader:
         Returns:
             list: List of validated data items.
         """
+        # Skip files that shouldn't be processed (e.g., G_SUBAREA)
+        if not self.__should_process_file(file_path):
+            return []
 
         try:
             async with aiofiles.open(file_path) as file:
@@ -243,16 +262,19 @@ class DataLoader:
         filename = file_path.name.upper()
         
         # Skip files that are clearly not wydzielenia
-        skip_patterns = [
-            'G_SUBAREA',  # Sub-areas (podpowierzchnie)
-            'G_',         # Other G_ prefixed files
-            'SUBAREA',    # Any subarea files
-        ]
+        # Check most specific patterns first
+        if 'G_SUBAREA' in filename:
+            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
+            return False
         
-        for pattern in skip_patterns:
-            if pattern in filename:
-                logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
-                return False
+        if 'SUBAREA' in filename:
+            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
+            return False
+        
+        # Skip files starting with G_ (but allow files that just contain G_ in the middle)
+        if filename.startswith('G_'):
+            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
+            return False
         
         # Process files that match wydzielenia patterns or are from old API
         if '_wydzielenia' in filename or filename.endswith('.JSON') or filename.endswith('.GEOJSON'):
