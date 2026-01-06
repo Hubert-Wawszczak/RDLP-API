@@ -157,18 +157,31 @@ class DataLoader:
         except ValidationError as e:
             # Don't log validation errors for files that are clearly not wydzielenia
             # (e.g., G_SUBAREA files that were not filtered out)
-            file_str = str(file)
-            error_str = str(e)
-            if 'G_SUBAREA' in file_str or 'G_' in file_str or 'SUBAREA' in file_str:
+            file_str = str(file).upper()
+            
+            # Skip G_SUBAREA and similar files completely - check FIRST before any processing
+            if 'G_SUBAREA' in file_str or 'SUBAREA' in file_str or 'G_' in file_str:
                 return None
-            # Also skip if the error is about missing id field (likely not a wydzielenia)
-            if 'id' in error_str.lower() and 'required' in error_str.lower():
+            
+            # Check error message for missing id (likely not a wydzielenia)
+            error_str = str(e).upper()
+            if 'id' in error_str and 'required' in error_str:
                 return None
-            logger.log("ERROR", f"{file} Validation error {e.json()}")
+            
+            # Only parse JSON if we need to log the error
+            try:
+                error_json = e.json() if hasattr(e, 'json') else str(e)
+                if 'id' in error_json.upper() and 'required' in error_json.upper():
+                    return None
+            except:
+                error_json = str(e)
+                
+            logger.log("ERROR", f"{file} Validation error {error_json}")
             return []
         except Exception as e:
             # Don't log errors for files that are clearly not wydzielenia
-            if 'G_SUBAREA' in str(file) or 'G_' in str(file):
+            file_str = str(file).upper()
+            if 'G_SUBAREA' in file_str or 'SUBAREA' in file_str or 'G_' in file_str:
                 return None
             logger.log("ERROR", f"{file} Unexpected error: {e}")
             return []
