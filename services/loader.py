@@ -70,6 +70,11 @@ class DataLoader:
             properties = data.get("properties", {})
             geometry_data = data.get('geometry')
             
+            # Extract id - can be at feature level or in properties
+            feature_id = data.get("id")
+            properties_id = properties.get("id")
+            item_id = feature_id or properties_id
+            
             # Extract RDLP name from filename or path
             # Try to match pattern like "RDLP_*_wydzielenia" first (old API format)
             filename = file.name.split('/')[-1]
@@ -106,14 +111,14 @@ class DataLoader:
             
             if not rdlp_name:
                 logger.log("ERROR", f"{file} Could not extract RDLP name from filename or properties")
-                return []
+                return None
             
             # Extract forest_range_name from properties or use default
             forest_range_name = properties.get("forest_range_name") or properties.get("nazwa") or "unknown"
             
             # Build item dictionary with optional fields
             item = {
-                "id": data.get("id"),
+                "id": item_id,
                 "area_type": properties.get("area_type"),
                 "a_i_num": properties.get("a_i_num"),
                 "silvicult": properties.get("silvicult"),
@@ -136,8 +141,9 @@ class DataLoader:
             
             # Validate required fields
             if not item.get("id"):
-                logger.log("ERROR", f"{file} Missing required field: id")
-                return []
+                # Skip silently - this file doesn't have required fields, likely not a wydzielenia
+                # Return None instead of [] to distinguish from validation errors
+                return None
             if not item.get("adr_for"):
                 logger.log("ERROR", f"{file} Missing required field: adr_for")
                 return []
@@ -194,7 +200,9 @@ class DataLoader:
 
                 async for item in self.__get_single_item(json_data):
                     vitem = self.__validate_data(item, file_path)
-                    validated_data.append(vitem)
+                    # Only append if validation returned a valid RDLPData object (not None or empty list)
+                    if vitem is not None:
+                        validated_data.append(vitem)
             return validated_data
         except FileNotFoundError:
             logger.log("ERROR", f"File not found: {file_path}")
@@ -221,10 +229,44 @@ class DataLoader:
         else:
             raise FileNotFoundError
 
+    def __should_process_file(self, file_path: Path) -> bool:
+        """
+        Determines if a file should be processed based on its name.
+        Skips files that are not wydzielenia (e.g., G_SUBAREA, G_* files).
+        
+        Args:
+            file_path (Path): Path to the file
+            
+        Returns:
+            bool: True if file should be processed, False otherwise
+        """
+        filename = file_path.name.upper()
+        
+        # Skip files that are clearly not wydzielenia
+        skip_patterns = [
+            'G_SUBAREA',  # Sub-areas (podpowierzchnie)
+            'G_',         # Other G_ prefixed files
+            'SUBAREA',    # Any subarea files
+        ]
+        
+        for pattern in skip_patterns:
+            if pattern in filename:
+                logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
+                return False
+        
+        # Process files that match wydzielenia patterns or are from old API
+        if '_wydzielenia' in filename or filename.endswith('.JSON') or filename.endswith('.GEOJSON'):
+            return True
+        
+        # For ZIP files, check if filename suggests it's a wydzielenia file
+        # Most wydzielenia files don't have G_ prefix
+        return True
+    
     async def __batch_process_files(self):
         """
         Asynchronously yields batches of files to be processed.
         Searches for .json and .geojson files in the data directory and extracted subdirectories.
+        Filters out files that are not wydzielenia (e.g., G_SUBAREA).
 
         Yields:
             coroutine: Coroutine for processing a batch of files.
@@ -244,7 +286,11 @@ class DataLoader:
             files.extend(extracted_dir.rglob("*.json"))
             files.extend(extracted_dir.rglob("*.geojson"))
         
+        # Filter out files that shouldn't be processed
+        files = [f for f in files if self.__should_process_file(f)]
+        
         total_files = len(files)
+        logger.log("INFO", f"Found {total_files} files to process (after filtering)")
 
         for i in range(0, total_files, self.batch_size):
             batch = self.__process_single_batch(files[i:i + self.batch_size])
