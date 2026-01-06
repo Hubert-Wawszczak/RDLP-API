@@ -71,14 +71,23 @@ class MainProcess(DataProcessTemplate):
         self.api_client = APIClient(self.data_dir)
 
     async def api_data_fetch(self):
-        endpoints = self.config.get("endpoints")
-        batch_size = self.config.get("batch_size")
+        zip_urls = self.config.get("zip_urls", [])
         
-        # Convert string to list if needed
-        if isinstance(endpoints, str):
-            endpoints = [endpoints]
+        if zip_urls:
+            # New method: download from ZIP files
+            max_concurrent = self.config.get("max_concurrent_downloads", 5)
+            await self.api_client.fetch_data_from_zips(zip_urls, max_concurrent)
+        else:
+            # Legacy method: fetch from API (deprecated)
+            endpoints = self.config.get("endpoints", "all")
+            batch_size = self.config.get("batch_size", 1000)
+            
+            # Convert string to list if needed
+            if isinstance(endpoints, str):
+                endpoints = [endpoints]
+            
+            await self.api_client.fetch_data(endpoints, batch_size)
         
-        await self.api_client.fetch_data(endpoints, batch_size) # should be 'all' "RDLP_Krakow_wydzielenia"
         self.logger.log("INFO", "Finished data fetch and load process.")
 
     async def load_to_db(self):

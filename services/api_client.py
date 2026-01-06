@@ -5,8 +5,10 @@ import asyncio
 
 from pathlib import Path
 from datetime import datetime
-from typing import Literal, get_args
+from typing import Literal, get_args, List
 from utils.logger.logger import AsyncLogger
+from services.zip_downloader import ZIPDownloader
+from services.shapefile_converter import convert_all_shapefiles_in_directory, find_geojson_files, find_json_files
 
 
 logger = AsyncLogger()
@@ -54,9 +56,10 @@ class APIClient:
     ]
 
 
-    def __init__(self, save_dir: Path = Path(__file__).parent / 'api_data'):
+    def __init__(self, save_dir: Path = Path(__file__).parent.parent / 'api_data'):
         self.save_dir = save_dir
         self.save_dir.mkdir(exist_ok=True)
+        self.zip_downloader = ZIPDownloader(save_dir)
 
     @staticmethod
     async def __get_item_total(session: aiohttp.ClientSession, url: str):
@@ -140,9 +143,44 @@ class APIClient:
             logger.log("INFO", f"Fetched {total} data entries from {endpoint}")
         return True
 
+    async def fetch_data_from_zips(self, zip_urls: List[str], max_concurrent: int = 5):
+        """
+        Downloads and extracts ZIP files, then converts Shapefiles to GeoJSON if needed.
+
+        Args:
+            zip_urls (List[str]): List of URLs to ZIP files
+            max_concurrent (int): Maximum number of concurrent downloads
+
+        Returns:
+            bool: True if data was fetched successfully, False otherwise.
+        """
+        try:
+            logger.log("INFO", f"Downloading {len(zip_urls)} ZIP files")
+            
+            # Download and extract all ZIP files
+            extracted_dirs = await self.zip_downloader.download_multiple(zip_urls, max_concurrent)
+            
+            logger.log("INFO", f"Successfully extracted {len(extracted_dirs)} ZIP files")
+            
+            # Convert all Shapefiles to GeoJSON
+            for extract_dir in extracted_dirs:
+                if extract_dir and extract_dir.exists():
+                    try:
+                        convert_all_shapefiles_in_directory(extract_dir)
+                    except Exception as e:
+                        logger.log("ERROR", f"Error converting Shapefiles in {extract_dir}: {str(e)}")
+            
+            logger.log("INFO", "Finished downloading and converting ZIP files")
+            return True
+        except Exception as e:
+            logger.log("ERROR", f"Failed to fetch data from ZIP files: {str(e)}")
+            return False
+
     async def fetch_data(self, endpoints: list[__ENDPOINTS], limit: int = 1000):
         """
         Fetches data for the specified endpoints, supporting single, multiple, or all endpoints.
+        NOTE: This method is kept for backward compatibility but is deprecated.
+        Use fetch_data_from_zips() instead for ZIP file downloads.
 
         Args:
             endpoints (list[__ENDPOINTS]): List of endpoint names to fetch data from.

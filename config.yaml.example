@@ -1,0 +1,23 @@
+# Configuration file for RDLP-API
+# This file configures which ZIP files to download and batch processing settings
+
+# List of ZIP file URLs to download from BDL sharing service
+# Example URLs from email:
+zip_urls:
+  - https://www.bdl.lasy.gov.pl/SharingData/DownloadData.ashx?id=6140bf62-8236-471c-a509-9d14ec45fe75&file=BDL_01_01_AUGUSTOW_2025.zip
+  - https://www.bdl.lasy.gov.pl/SharingData/DownloadData.ashx?id=6140bf62-8236-471c-a509-9d14ec45fe75&file=BDL_01_02_BIALOWIEZA_2025.zip
+  # Add more URLs here...
+
+# Maximum number of concurrent downloads
+max_concurrent_downloads: 5
+
+# Batch size for processing files
+# Number of files to process concurrently
+batch_size: 10000
+
+# Legacy endpoints configuration (deprecated - use zip_urls instead)
+# Options:
+#   - 'all' - fetch all RDLP endpoints
+#   - List of specific endpoints, e.g. ['RDLP_Bialystok_wydzielenia', 'RDLP_Krakow_wydzielenia']
+endpoints: 'all'
+

@@ -70,14 +70,42 @@ class DataLoader:
             properties = data.get("properties", {})
             geometry_data = data.get('geometry')
             
-            # Extract RDLP name from filename
-            match = re.search(".*_wydzielenia", file.name.split('/')[-1])
-            if not match:
-                logger.log("ERROR", f"{file} Could not extract RDLP name from filename")
-                return []
-            rdlp_name = self.__ENDPOINTS_DICT.get(match.group())
+            # Extract RDLP name from filename or path
+            # Try to match pattern like "RDLP_*_wydzielenia" first (old API format)
+            filename = file.name.split('/')[-1]
+            match = re.search(".*_wydzielenia", filename)
+            
+            if match:
+                # Old API format
+                rdlp_name = self.__ENDPOINTS_DICT.get(match.group())
+            else:
+                # Try to extract from ZIP file structure or properties
+                # Check if file is in extracted directory (from ZIP)
+                path_str = str(file)
+                if 'extracted' in path_str:
+                    # Try to find RDLP name from parent directory or properties
+                    # Look for BDL_XX_XX pattern in path
+                    bdl_match = re.search(r'BDL_(\d+)_', path_str)
+                    if bdl_match:
+                        # Map BDL region code to RDLP name
+                        region_code = bdl_match.group(1)
+                        rdlp_mapping = {
+                            '01': 'bialystok', '02': 'katowice', '03': 'krakow', '04': 'krosno',
+                            '05': 'lublin', '06': 'lodz', '07': 'olsztyn', '08': 'pila',
+                            '09': 'poznan', '10': 'szczecin', '11': 'szczecinek', '12': 'torun',
+                            '13': 'wroclaw', '14': 'zielona_gora', '15': 'gdansk',
+                            '16': 'radom', '17': 'warszawa'
+                        }
+                        rdlp_name = rdlp_mapping.get(region_code)
+                    else:
+                        # Try to get from properties
+                        rdlp_name = properties.get("rdlp_name")
+                else:
+                    # Try to get from properties
+                    rdlp_name = properties.get("rdlp_name")
+            
             if not rdlp_name:
-                logger.log("ERROR", f"{file} Unknown RDLP name: {match.group()}")
+                logger.log("ERROR", f"{file} Could not extract RDLP name from filename or properties")
                 return []
             
             # Extract forest_range_name from properties or use default
@@ -126,16 +154,26 @@ class DataLoader:
     async def __get_single_item(self, data):
         """
         Asynchronously yields each feature item from the data.
+        Handles both GeoJSON FeatureCollection format and single Feature format.
 
         Args:
-            data (dict): The JSON data containing features.
+            data (dict): The JSON/GeoJSON data containing features.
 
         Yields:
             dict: A single feature item.
         """
-
-        for item in data.get("features", []):
-            yield item
+        # Handle GeoJSON FeatureCollection format
+        if "features" in data:
+            for item in data.get("features", []):
+                yield item
+        # Handle single Feature format (from Shapefile conversion)
+        elif data.get("type") == "Feature":
+            yield data
+        # Handle array of features
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    yield item
 
     async def __process_file(self, file_path: Path):
         """
@@ -186,12 +224,26 @@ class DataLoader:
     async def __batch_process_files(self):
         """
         Asynchronously yields batches of files to be processed.
+        Searches for .json and .geojson files in the data directory and extracted subdirectories.
 
         Yields:
             coroutine: Coroutine for processing a batch of files.
         """
-
-        files = list(self.data_dir.glob("*.json"))
+        # Search for JSON and GeoJSON files in data directory and extracted subdirectories
+        files = []
+        
+        # Find JSON files in root data directory
+        files.extend(self.data_dir.glob("*.json"))
+        
+        # Find GeoJSON files in root data directory
+        files.extend(self.data_dir.glob("*.geojson"))
+        
+        # Find JSON and GeoJSON files in extracted subdirectories
+        extracted_dir = self.data_dir / 'extracted'
+        if extracted_dir.exists():
+            files.extend(extracted_dir.rglob("*.json"))
+            files.extend(extracted_dir.rglob("*.geojson"))
+        
         total_files = len(files)
 
         for i in range(0, total_files, self.batch_size):
@@ -264,7 +316,7 @@ class DataLoader:
                    rows = [tuple(item.get(col) for col in columns) for item in items]
                    await conn.executemany(sql, rows)
                    logger.log("INFO", f"Inserted {len(rows)} records into rdlp.{table_name}_partition.")
-        self.connection.close()
+        await self.connection.close()
 
 
 
