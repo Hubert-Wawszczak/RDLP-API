@@ -70,10 +70,14 @@ class DataLoader:
             properties = data.get("properties", {})
             geometry_data = data.get('geometry')
             
-            # Extract id - can be at feature level or in properties
+            # Extract id - can be at feature level, in properties, or as a_i_num
+            # According to documentation, G_COMPARTMENT uses a_i_num instead of id
             feature_id = data.get("id")
             properties_id = properties.get("id")
-            item_id = feature_id or properties_id
+            a_i_num = properties.get("a_i_num")
+            
+            # Use id if available, otherwise use a_i_num (for G_COMPARTMENT files)
+            item_id = feature_id or properties_id or a_i_num
             
             # Early return if id is missing - this is likely not a wydzielenia file
             if not item_id:
@@ -156,11 +160,14 @@ class DataLoader:
             return validated
         except ValidationError as e:
             # Don't log validation errors for files that are clearly not wydzielenia
-            # (e.g., G_SUBAREA files that were not filtered out)
             file_str = str(file).upper()
             
-            # Skip G_SUBAREA and similar files completely - check FIRST before any processing
-            if 'G_SUBAREA' in file_str or 'SUBAREA' in file_str or 'G_' in file_str:
+            # Skip all G_ files except G_COMPARTMENT (wydzielenia)
+            if 'G_' in file_str and 'G_COMPARTMENT' not in file_str:
+                return None
+            
+            # Skip SUBAREA files
+            if 'SUBAREA' in file_str:
                 return None
             
             # Check error message for missing id (likely not a wydzielenia)
@@ -181,8 +188,15 @@ class DataLoader:
         except Exception as e:
             # Don't log errors for files that are clearly not wydzielenia
             file_str = str(file).upper()
-            if 'G_SUBAREA' in file_str or 'SUBAREA' in file_str or 'G_' in file_str:
+            
+            # Skip all G_ files except G_COMPARTMENT (wydzielenia)
+            if 'G_' in file_str and 'G_COMPARTMENT' not in file_str:
                 return None
+            
+            # Skip SUBAREA files
+            if 'SUBAREA' in file_str:
+                return None
+                
             logger.log("ERROR", f"{file} Unexpected error: {e}")
             return []
 
@@ -264,38 +278,47 @@ class DataLoader:
     def __should_process_file(self, file_path: Path) -> bool:
         """
         Determines if a file should be processed based on its name.
-        Skips files that are not wydzielenia (e.g., G_SUBAREA, G_* files).
+        Only processes wydzielenia (G_COMPARTMENT) files, skips all other types.
+        
+        According to documentation:
+        - G_COMPARTMENT = wydzielenia (divisions/compartments) - PROCESS
+        - G_SUBAREA = podpowierzchnie (subareas) - SKIP
+        - G_FOREST_RANGE = lesnictwa (forest ranges) - SKIP
+        - G_INSPECTORATE = inspektoraty (inspectorates) - SKIP
         
         Args:
             file_path (Path): Path to the file
             
         Returns:
-            bool: True if file should be processed, False otherwise
+            bool: True if file should be processed (wydzielenia), False otherwise
         """
         filename = file_path.name.upper()
         
-        # Skip files that are clearly not wydzielenia
-        # Check most specific patterns first
-        if 'G_SUBAREA' in filename:
-            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
+        # Process G_COMPARTMENT files (wydzielenia/compartments)
+        if 'G_COMPARTMENT' in filename:
+            return True
+        
+        # Process old API format files (RDLP_*_wydzielenia)
+        if '_wydzielenia' in filename:
+            return True
+        
+        # Skip all other G_ prefixed files (G_SUBAREA, G_FOREST_RANGE, G_INSPECTORATE, etc.)
+        if filename.startswith('G_'):
+            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name} (not G_COMPARTMENT)")
             return False
         
+        # Skip SUBAREA files (without G_ prefix)
         if 'SUBAREA' in filename:
             logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
             return False
         
-        # Skip files starting with G_ (but allow files that just contain G_ in the middle)
-        if filename.startswith('G_'):
-            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
-            return False
-        
-        # Process files that match wydzielenia patterns or are from old API
-        if '_wydzielenia' in filename or filename.endswith('.JSON') or filename.endswith('.GEOJSON'):
+        # For old API JSON files (without G_ prefix), process them
+        if filename.endswith('.JSON') or filename.endswith('.GEOJSON'):
             return True
         
-        # For ZIP files, check if filename suggests it's a wydzielenia file
-        # Most wydzielenia files don't have G_ prefix
-        return True
+        # Default: skip unknown files
+        logger.log("INFO", f"Skipping unknown file type: {file_path.name}")
+        return False
     
     async def __batch_process_files(self):
         """
