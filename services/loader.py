@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from utils.validators import RDLPData
 from utils.logger.logger import AsyncLogger
 from db.connection import DBConnection
+from services.txt_loader import load_all_descriptive_data, merge_geometry_with_descriptive_data
 
 logger = AsyncLogger()
 
@@ -224,12 +225,14 @@ class DataLoader:
                 if isinstance(item, dict):
                     yield item
 
-    async def __process_file(self, file_path: Path):
+    async def __process_file(self, file_path: Path, descriptive_data: dict = None):
         """
         Processes a single JSON file: reads, parses, and validates its data.
+        Optionally merges with descriptive data from TXT files.
 
         Args:
             file_path (Path): Path to the JSON file.
+            descriptive_data (dict, optional): Descriptive data from F_* tables indexed by arodes_int_num.
 
         Returns:
             list: List of validated data items.
@@ -245,6 +248,10 @@ class DataLoader:
                 validated_data = []
 
                 async for item in self.__get_single_item(json_data):
+                    # Merge with descriptive data if available
+                    if descriptive_data:
+                        item = merge_geometry_with_descriptive_data(item, descriptive_data)
+                    
                     vitem = self.__validate_data(item, file_path)
                     # Only append if validation returned a valid RDLPData object (not None or empty list)
                     if vitem is not None:
@@ -257,19 +264,20 @@ class DataLoader:
             logger.log("ERROR", f"Error processing file {file_path}: {e}")
             return []
 
-    async def __process_single_batch(self, batch):
+    async def __process_single_batch(self, batch, descriptive_data: dict = None):
         """
         Processes a batch of files concurrently.
 
         Args:
             batch (list[Path]): List of file paths in the batch.
+            descriptive_data (dict, optional): Descriptive data from F_* tables.
 
         Returns:
             list: List of results from processing each file.
         """
 
         if batch is not None:
-            tasks = [ self.__process_file(f) for f in batch if f.is_file() ]
+            tasks = [ self.__process_file(f, descriptive_data) for f in batch if f.is_file() ]
             logger.log("INFO", f"Processing batch of {len(tasks)} files for endpoint {batch[0].name.split('_wydzielenia')[0]}")
             return await asyncio.gather(*tasks)
         else:
@@ -325,10 +333,43 @@ class DataLoader:
         Asynchronously yields batches of files to be processed.
         Searches for .json and .geojson files in the data directory and extracted subdirectories.
         Filters out files that are not wydzielenia (e.g., G_SUBAREA).
+        Also loads descriptive data from TXT files (F_* tables) and merges it with geometry data.
 
         Yields:
             coroutine: Coroutine for processing a batch of files.
         """
+        # Load descriptive data from TXT files
+        # Try to find TXT files in extracted subdirectories (from ZIP files)
+        descriptive_data = {}
+        txt_files_found = False
+        
+        # First, try to find TXT files in extracted subdirectories
+        extracted_dir = self.data_dir / 'extracted'
+        if extracted_dir.exists():
+            # Look for TXT files in each extracted ZIP directory
+            for zip_dir in extracted_dir.iterdir():
+                if zip_dir.is_dir():
+                    if (zip_dir / 'f_subarea.txt').exists() or (zip_dir / 'F_SUBAREA.txt').exists():
+                        logger.log("INFO", f"Loading descriptive data from {zip_dir}")
+                        zip_descriptive_data = load_all_descriptive_data(zip_dir)
+                        # Merge with existing data (later ZIPs override earlier ones)
+                        descriptive_data.update(zip_descriptive_data)
+                        txt_files_found = True
+        
+        # If not found in extracted, try root data directory
+        if not txt_files_found:
+            for potential_dir in [self.data_dir, self.data_dir.parent]:
+                if (potential_dir / 'f_subarea.txt').exists() or (potential_dir / 'F_SUBAREA.txt').exists():
+                    logger.log("INFO", f"Loading descriptive data from {potential_dir}")
+                    descriptive_data = load_all_descriptive_data(potential_dir)
+                    txt_files_found = True
+                    break
+        
+        if not txt_files_found:
+            logger.log("INFO", "No descriptive TXT files found, processing geometry data only")
+        else:
+            logger.log("INFO", f"Loaded descriptive data for {len(descriptive_data)} records")
+        
         # Search for JSON and GeoJSON files in data directory and extracted subdirectories
         files = []
         
@@ -351,7 +392,7 @@ class DataLoader:
         logger.log("INFO", f"Found {total_files} files to process (after filtering)")
 
         for i in range(0, total_files, self.batch_size):
-            batch = self.__process_single_batch(files[i:i + self.batch_size])
+            batch = self.__process_single_batch(files[i:i + self.batch_size], descriptive_data)
             yield batch
 
     async def insert_data(self):
