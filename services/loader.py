@@ -365,6 +365,9 @@ class DataLoader:
         if self.pool is None:
             logger.log("INFO", "Creating database connection pool.")
             self.pool = await self.connection.create_pool(self.pool_size // 2, self.pool_size)
+            
+            # Note: Database tables should be initialized by backend Alembic migrations
+            # Tables are expected to exist before data insertion
 
         async for batch_future in self.__batch_process_files():
             batch_results = await batch_future
