@@ -296,10 +296,13 @@ def merge_geometry_with_descriptive_data(
     descriptive_data: Dict[int, Dict]
 ) -> Dict:
     """
-    Merges geometry data from G_COMPARTMENT with descriptive data from F_* tables.
+    Merges geometry data from G_SUBAREA or G_COMPARTMENT with descriptive data from F_* tables.
+    
+    G_SUBAREA already contains all descriptive fields, so merging is only needed for G_COMPARTMENT.
+    This function ensures all fields are populated to avoid NULL values in the database.
     
     Args:
-        geometry_data: Dictionary with geometry data (from G_COMPARTMENT GeoJSON)
+        geometry_data: Dictionary with geometry data (from G_SUBAREA or G_COMPARTMENT GeoJSON)
         descriptive_data: Dictionary with descriptive data indexed by arodes_int_num
     
     Returns:
@@ -319,44 +322,49 @@ def merge_geometry_with_descriptive_data(
     # Get descriptive data for this a_i_num
     desc_data = descriptive_data.get(a_i_num, {})
     
-    # Merge properties
+    # If no descriptive data found, return original (G_SUBAREA already has all fields)
+    if not desc_data:
+        return geometry_data
+    
+    # Merge properties (only fill missing fields - G_SUBAREA already has most fields)
     merged_properties = properties.copy()
     
-    # Map F_SUBAREA fields to our schema
-    if desc_data.get('area_type_cd'):
+    # Map F_SUBAREA fields to our schema (only if not already present)
+    # G_SUBAREA already has these fields, but we merge for G_COMPARTMENT compatibility
+    if not merged_properties.get('area_type') and desc_data.get('area_type_cd'):
         merged_properties['area_type'] = desc_data['area_type_cd']
-    if desc_data.get('site_type_cd'):
+    if not merged_properties.get('site_type') and desc_data.get('site_type_cd'):
         merged_properties['site_type'] = desc_data['site_type_cd']
-    if desc_data.get('silviculture_cd'):
+    if not merged_properties.get('silvicult') and desc_data.get('silviculture_cd'):
         merged_properties['silvicult'] = desc_data['silviculture_cd']
-    if desc_data.get('stand_struct_cd'):
+    if not merged_properties.get('stand_stru') and desc_data.get('stand_struct_cd'):
         merged_properties['stand_stru'] = desc_data['stand_struct_cd']
-    if desc_data.get('forest_func_cd'):
+    if not merged_properties.get('forest_fun') and desc_data.get('forest_func_cd'):
         merged_properties['forest_fun'] = desc_data['forest_func_cd']
-    if desc_data.get('rotation_age'):
+    if not merged_properties.get('rotat_age') and desc_data.get('rotation_age'):
         try:
             merged_properties['rotat_age'] = int(desc_data['rotation_age'])
         except (ValueError, TypeError):
             pass
-    if desc_data.get('sub_area'):
+    if not merged_properties.get('sub_area') and desc_data.get('sub_area'):
         try:
             merged_properties['sub_area'] = float(desc_data['sub_area'])
         except (ValueError, TypeError):
             pass
-    if desc_data.get('prot_category_cd'):
+    if not merged_properties.get('prot_categ') and desc_data.get('prot_category_cd'):
         merged_properties['prot_categ'] = desc_data['prot_category_cd']
-    if desc_data.get('species_cd'):
+    if not merged_properties.get('species_cd') and desc_data.get('species_cd'):
         merged_properties['species_cd'] = desc_data['species_cd']
-    if desc_data.get('spec_age'):
+    if not merged_properties.get('spec_age') and desc_data.get('species_age'):
         try:
-            merged_properties['spec_age'] = int(desc_data['spec_age'])
+            merged_properties['spec_age'] = int(desc_data['species_age'])
         except (ValueError, TypeError):
             pass
-    if desc_data.get('part_cd'):
-        merged_properties['part_cd'] = desc_data['part_cd']
-    if desc_data.get('adr_for') and not merged_properties.get('adr_for'):
+    if not merged_properties.get('part_cd') and desc_data.get('part_cd_act'):
+        merged_properties['part_cd'] = desc_data['part_cd_act']
+    if not merged_properties.get('adr_for') and desc_data.get('adr_for'):
         merged_properties['adr_for'] = desc_data['adr_for']
-    if desc_data.get('inspectorate_name'):
+    if not merged_properties.get('forest_range_name') and desc_data.get('inspectorate_name'):
         merged_properties['forest_range_name'] = desc_data['inspectorate_name']
     
     # Create merged geometry data

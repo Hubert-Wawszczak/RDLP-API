@@ -126,10 +126,11 @@ class DataLoader:
             forest_range_name = properties.get("forest_range_name") or properties.get("nazwa") or "unknown"
             
             # Build item dictionary with optional fields
+            # G_SUBAREA already contains all fields, G_COMPARTMENT will be merged with F_* tables
             item = {
                 "id": item_id,
                 "area_type": properties.get("area_type"),
-                "a_i_num": properties.get("a_i_num"),
+                "a_i_num": a_i_num if a_i_num else item_id,  # Use a_i_num if available, otherwise use item_id
                 "silvicult": properties.get("silvicult"),
                 "stand_stru": properties.get("stand_stru"),
                 "sub_area": properties.get("sub_area"),
@@ -147,6 +148,31 @@ class DataLoader:
                 "forest_range_name": forest_range_name,
                 "rdlp_name": rdlp_name
             }
+            
+            # Convert numeric fields if they are strings
+            if item.get("sub_area") and isinstance(item["sub_area"], str):
+                try:
+                    item["sub_area"] = float(item["sub_area"])
+                except (ValueError, TypeError):
+                    item["sub_area"] = None
+            
+            if item.get("rotat_age") and isinstance(item["rotat_age"], str):
+                try:
+                    item["rotat_age"] = int(item["rotat_age"])
+                except (ValueError, TypeError):
+                    item["rotat_age"] = None
+            
+            if item.get("spec_age") and isinstance(item["spec_age"], str):
+                try:
+                    item["spec_age"] = int(item["spec_age"])
+                except (ValueError, TypeError):
+                    item["spec_age"] = None
+            
+            if item.get("a_year") and isinstance(item["a_year"], str):
+                try:
+                    item["a_year"] = int(item["a_year"])
+                except (ValueError, TypeError):
+                    item["a_year"] = None
             
             # Validate required fields
             if not item.get("id"):
@@ -286,13 +312,17 @@ class DataLoader:
     def __should_process_file(self, file_path: Path) -> bool:
         """
         Determines if a file should be processed based on its name.
-        Only processes wydzielenia (G_COMPARTMENT) files, skips all other types.
+        Processes wydzielenia files - G_SUBAREA (has all descriptive fields) or G_COMPARTMENT.
         
-        According to documentation:
-        - G_COMPARTMENT = wydzielenia (divisions/compartments) - PROCESS
-        - G_SUBAREA = podpowierzchnie (subareas) - SKIP
+        According to documentation (DataDescription.pdf):
+        - G_SUBAREA = wydzielenia (subareas) with all descriptive fields - PROCESS (preferred)
+        - G_COMPARTMENT = oddziały (compartments) with only basic fields - PROCESS (fallback)
         - G_FOREST_RANGE = lesnictwa (forest ranges) - SKIP
         - G_INSPECTORATE = inspektoraty (inspectorates) - SKIP
+        
+        G_SUBAREA contains: a_i_num, adr_for, area_type, site_type, silvicult, forest_fun,
+        stand_stru, rotat_age, sub_area, prot_categ, species_cd, part_cd, spec_age, a_year
+        G_COMPARTMENT contains only: a_i_num, adr_for, a_year
         
         Args:
             file_path (Path): Path to the file
@@ -302,21 +332,21 @@ class DataLoader:
         """
         filename = file_path.name.upper()
         
-        # Process G_COMPARTMENT files (wydzielenia/compartments)
+        # Process G_SUBAREA files (wydzielenia with all descriptive fields) - PREFERRED
+        if 'G_SUBAREA' in filename:
+            return True
+        
+        # Process G_COMPARTMENT files (oddziały/compartments) - FALLBACK if G_SUBAREA not available
         if 'G_COMPARTMENT' in filename:
+            logger.log("INFO", f"Processing G_COMPARTMENT file: {file_path.name} (will merge with F_* tables if available)")
             return True
         
         # Process old API format files (RDLP_*_wydzielenia)
         if '_wydzielenia' in filename:
             return True
         
-        # Skip all other G_ prefixed files (G_SUBAREA, G_FOREST_RANGE, G_INSPECTORATE, etc.)
+        # Skip other G_ prefixed files (G_FOREST_RANGE, G_INSPECTORATE, etc.)
         if filename.startswith('G_'):
-            logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name} (not G_COMPARTMENT)")
-            return False
-        
-        # Skip SUBAREA files (without G_ prefix)
-        if 'SUBAREA' in filename:
             logger.log("INFO", f"Skipping non-wydzielenia file: {file_path.name}")
             return False
         
