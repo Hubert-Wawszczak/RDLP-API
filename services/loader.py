@@ -496,8 +496,146 @@ class DataLoader:
                    rows = [tuple(item.get(col) for col in columns) for item in items]
                    await conn.executemany(sql, rows)
                    logger.log("INFO", f"Inserted {len(rows)} records into rdlp.{table_name}.")
-        await self.connection.close()
+        # Don't close connection here - allow further operations
 
+    async def close(self):
+        """Close database connection pool."""
+        if self.pool:
+            await self.connection.close()
+            self.pool = None
+
+    async def insert_g_tables_data(self):
+        """
+        Loads data from G_INSPECTORATE, G_FOREST_RANGE, G_SUBAREA files into respective tables.
+        These are separate geometry tables for reference data.
+        """
+        if self.pool is None:
+            logger.log("INFO", "Creating database connection pool for G_* tables.")
+            self.pool = await self.connection.create_pool(self.pool_size // 2, self.pool_size)
+
+        # Find all G_* GeoJSON files
+        files = []
+        files.extend(self.data_dir.glob("*.json"))
+        files.extend(self.data_dir.glob("*.geojson"))
+        
+        extracted_dir = self.data_dir / 'extracted'
+        if extracted_dir.exists():
+            files.extend(extracted_dir.rglob("*.json"))
+            files.extend(extracted_dir.rglob("*.geojson"))
+
+        # Filter for G_INSPECTORATE, G_FOREST_RANGE, G_SUBAREA files
+        g_inspectorate_files = [f for f in files if 'G_INSPECTORATE' in f.name.upper() and (f.name.upper().endswith('.JSON') or f.name.upper().endswith('.GEOJSON'))]
+        g_forest_range_files = [f for f in files if 'G_FOREST_RANGE' in f.name.upper() and (f.name.upper().endswith('.JSON') or f.name.upper().endswith('.GEOJSON'))]
+        g_subarea_files = [f for f in files if 'G_SUBAREA' in f.name.upper() and (f.name.upper().endswith('.JSON') or f.name.upper().endswith('.GEOJSON')) and 'WYDZELENIA' not in f.name.upper()]
+
+        logger.log("INFO", f"Found {len(g_inspectorate_files)} G_INSPECTORATE files, {len(g_forest_range_files)} G_FOREST_RANGE files, {len(g_subarea_files)} G_SUBAREA files")
+
+        # Load G_INSPECTORATE
+        if g_inspectorate_files:
+            await self.__load_g_table('G_INSPECTORATE', g_inspectorate_files, ['a_i_num', 'adr_for', 'i_name', 'a_year'])
+
+        # Load G_FOREST_RANGE
+        if g_forest_range_files:
+            await self.__load_g_table('G_FOREST_RANGE', g_forest_range_files, ['a_i_num', 'adr_for', 'f_r_name', 'a_year'])
+
+        # Load G_SUBAREA
+        if g_subarea_files:
+            await self.__load_g_table('G_SUBAREA', g_subarea_files, ['a_i_num', 'adr_for', 'area_type', 'site_type', 'silvicult', 'forest_fun', 'stand_stru', 'rotat_age', 'sub_area', 'prot_categ', 'species_cd', 'part_cd', 'spec_age', 'a_year'])
+
+    async def __load_g_table(self, table_name: str, files: list, fields: list):
+        """
+        Loads data from GeoJSON files into a G_* table.
+        
+        Args:
+            table_name: Name of the table (e.g., 'G_INSPECTORATE')
+            files: List of file paths to process
+            fields: List of field names to extract from properties
+        """
+        logger.log("INFO", f"Loading {table_name} data from {len(files)} files")
+        
+        all_items = []
+        for file_path in files:
+            try:
+                async with aiofiles.open(file_path) as f:
+                    file_content = await f.read()
+                    json_data = json.loads(file_content)
+                    
+                    # Handle FeatureCollection format
+                    features = []
+                    if "features" in json_data:
+                        features = json_data["features"]
+                    elif json_data.get("type") == "Feature":
+                        features = [json_data]
+                    elif isinstance(json_data, list):
+                        features = [item for item in json_data if isinstance(item, dict)]
+                    
+                    for feature in features:
+                        properties = feature.get('properties', {})
+                        geometry_data = feature.get('geometry')
+                        
+                        # Build item dictionary
+                        item = {}
+                        for field in fields:
+                            value = properties.get(field)
+                            # Convert numeric fields
+                            if field in ['a_i_num', 'a_year', 'rotat_age', 'spec_age']:
+                                if value is not None and value != '':
+                                    try:
+                                        item[field] = int(value)
+                                    except (ValueError, TypeError):
+                                        item[field] = None
+                                else:
+                                    item[field] = None
+                            elif field == 'sub_area':
+                                if value is not None and value != '':
+                                    try:
+                                        item[field] = float(value)
+                                    except (ValueError, TypeError):
+                                        item[field] = None
+                                else:
+                                    item[field] = None
+                            else:
+                                item[field] = value
+                        
+                        # Convert geometry to WKT
+                        if geometry_data:
+                            if isinstance(geometry_data, dict):
+                                try:
+                                    geom = shapely.geometry.shape(geometry_data)
+                                    item['geometry'] = shapely.wkt.dumps(geom)
+                                except Exception as e:
+                                    logger.log("ERROR", f"Failed to convert geometry to WKT for {file_path.name}: {e}")
+                                    item['geometry'] = None
+                            elif isinstance(geometry_data, str):
+                                item['geometry'] = geometry_data
+                            else:
+                                item['geometry'] = None
+                        else:
+                            item['geometry'] = None
+                        
+                        all_items.append(item)
+                    
+            except Exception as e:
+                logger.log("ERROR", f"Error processing {file_path} for {table_name}: {e}")
+                continue
+
+        if not all_items:
+            logger.log("INFO", f"No data to insert into {table_name}")
+            return
+
+        # Insert data into database
+        async with self.pool.acquire() as conn:
+            columns = fields + ['geometry']
+            col_names = ', '.join([f'"{col}"' if col != 'geometry' else '"geometry"' for col in columns])
+            placeholders = ', '.join([
+                f'${i+1}' if col != 'geometry' else f'ST_GeomFromText(${i+1}, 4326)' 
+                for i, col in enumerate(columns)
+            ])
+            
+            sql = f'INSERT INTO rdlp.{table_name} ({col_names}) VALUES ({placeholders})'
+            rows = [tuple(item.get(col) for col in columns) for item in all_items]
+            await conn.executemany(sql, rows)
+            logger.log("INFO", f"Inserted {len(rows)} records into rdlp.{table_name}")
 
 
 if __name__ == "__main__":

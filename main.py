@@ -94,6 +94,15 @@ class MainProcess(DataProcessTemplate):
         self.logger.log("INFO", "Starting data loading.")
         db_loader = DataLoader(self.data_dir)
         await db_loader.insert_data()
+        self.logger.log("INFO", "Finished wydzielenia data loading.")
+        
+        # Load G_* tables (G_INSPECTORATE, G_FOREST_RANGE, G_SUBAREA)
+        self.logger.log("INFO", "Starting G_* tables data loading.")
+        await db_loader.insert_g_tables_data()
+        self.logger.log("INFO", "Finished G_* tables data loading.")
+        
+        # Close connection after all operations
+        await db_loader.close()
         self.logger.log("INFO", "Finished data loading.")
 
     async def end_process(self):
