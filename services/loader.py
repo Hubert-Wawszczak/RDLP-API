@@ -9,6 +9,7 @@ import csv
 import unicodedata
 import shapely.geometry, shapely.wkt
 import unittest
+import geopandas as gpd
 
 from pathlib import Path
 from datetime import datetime
@@ -17,6 +18,7 @@ from utils.validators import RDLPData
 from utils.logger.logger import AsyncLogger
 from db.connection import DBConnection
 from services.txt_loader import load_all_descriptive_data, merge_geometry_with_descriptive_data
+from services.shapefile_converter import find_shapefiles
 
 logger = AsyncLogger()
 
@@ -544,11 +546,11 @@ class DataLoader:
 
     async def __load_g_table(self, table_name: str, files: list, fields: list):
         """
-        Loads data from GeoJSON files into a G_* table.
+        Loads data from GeoJSON or Shapefile files into a G_* table.
         
         Args:
             table_name: Name of the table (e.g., 'G_INSPECTORATE')
-            files: List of file paths to process
+            files: List of file paths to process (.json, .geojson, or .shp)
             fields: List of field names to extract from properties
         """
         logger.log("INFO", f"Loading {table_name} data from {len(files)} files")
@@ -556,27 +558,17 @@ class DataLoader:
         all_items = []
         for file_path in files:
             try:
-                async with aiofiles.open(file_path) as f:
-                    file_content = await f.read()
-                    json_data = json.loads(file_content)
+                # Check if file is Shapefile
+                if file_path.suffix.lower() == '.shp':
+                    # Load Shapefile directly using geopandas
+                    logger.log("INFO", f"Loading Shapefile: {file_path.name}")
+                    gdf = gpd.read_file(file_path)
                     
-                    # Handle FeatureCollection format
-                    features = []
-                    if "features" in json_data:
-                        features = json_data["features"]
-                    elif json_data.get("type") == "Feature":
-                        features = [json_data]
-                    elif isinstance(json_data, list):
-                        features = [item for item in json_data if isinstance(item, dict)]
-                    
-                    for feature in features:
-                        properties = feature.get('properties', {})
-                        geometry_data = feature.get('geometry')
-                        
-                        # Build item dictionary
+                    for idx, row in gdf.iterrows():
+                        # Build item dictionary from GeoDataFrame row
                         item = {}
                         for field in fields:
-                            value = properties.get(field)
+                            value = row.get(field)
                             # Convert numeric fields
                             if field in ['a_i_num', 'a_year', 'rotat_age', 'spec_age']:
                                 if value is not None and value != '':
@@ -598,22 +590,76 @@ class DataLoader:
                                 item[field] = value
                         
                         # Convert geometry to WKT
-                        if geometry_data:
-                            if isinstance(geometry_data, dict):
-                                try:
-                                    geom = shapely.geometry.shape(geometry_data)
-                                    item['geometry'] = shapely.wkt.dumps(geom)
-                                except Exception as e:
-                                    logger.log("ERROR", f"Failed to convert geometry to WKT for {file_path.name}: {e}")
-                                    item['geometry'] = None
-                            elif isinstance(geometry_data, str):
-                                item['geometry'] = geometry_data
-                            else:
+                        if row.geometry is not None:
+                            try:
+                                item['geometry'] = shapely.wkt.dumps(row.geometry)
+                            except Exception as e:
+                                logger.log("ERROR", f"Failed to convert geometry to WKT for {file_path.name}: {e}")
                                 item['geometry'] = None
                         else:
                             item['geometry'] = None
                         
                         all_items.append(item)
+                else:
+                    # Load GeoJSON file
+                    async with aiofiles.open(file_path) as f:
+                        file_content = await f.read()
+                        json_data = json.loads(file_content)
+                        
+                        # Handle FeatureCollection format
+                        features = []
+                        if "features" in json_data:
+                            features = json_data["features"]
+                        elif json_data.get("type") == "Feature":
+                            features = [json_data]
+                        elif isinstance(json_data, list):
+                            features = [item for item in json_data if isinstance(item, dict)]
+                        
+                        for feature in features:
+                            properties = feature.get('properties', {})
+                            geometry_data = feature.get('geometry')
+                            
+                            # Build item dictionary
+                            item = {}
+                            for field in fields:
+                                value = properties.get(field)
+                                # Convert numeric fields
+                                if field in ['a_i_num', 'a_year', 'rotat_age', 'spec_age']:
+                                    if value is not None and value != '':
+                                        try:
+                                            item[field] = int(value)
+                                        except (ValueError, TypeError):
+                                            item[field] = None
+                                    else:
+                                        item[field] = None
+                                elif field == 'sub_area':
+                                    if value is not None and value != '':
+                                        try:
+                                            item[field] = float(value)
+                                        except (ValueError, TypeError):
+                                            item[field] = None
+                                    else:
+                                        item[field] = None
+                                else:
+                                    item[field] = value
+                            
+                            # Convert geometry to WKT
+                            if geometry_data:
+                                if isinstance(geometry_data, dict):
+                                    try:
+                                        geom = shapely.geometry.shape(geometry_data)
+                                        item['geometry'] = shapely.wkt.dumps(geom)
+                                    except Exception as e:
+                                        logger.log("ERROR", f"Failed to convert geometry to WKT for {file_path.name}: {e}")
+                                        item['geometry'] = None
+                                elif isinstance(geometry_data, str):
+                                    item['geometry'] = geometry_data
+                                else:
+                                    item['geometry'] = None
+                            else:
+                                item['geometry'] = None
+                            
+                            all_items.append(item)
                     
             except Exception as e:
                 logger.log("ERROR", f"Error processing {file_path} for {table_name}: {e}")
